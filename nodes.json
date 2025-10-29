@@ -1,0 +1,55 @@
+{
+  "DESKTOP-A26E195": {
+    "os": "Linux",
+    "gpu": {
+      "gpu_name": "NVIDIA GeForce RTX 3060",
+      "memory_total": 12288,
+      "utilization": 25
+    },
+    "last_seen": "2025-10-29T15:03:04.987721Z",
+    "uptime": 1761749239.352345,
+    "utilization": 25.0,
+    "rewards": 5.1313,
+    "avg_utilization": 30.67,
+    "utilization_samples": [
+      2.0,
+      51.0,
+      50.0,
+      50.0,
+      0.0,
+      50.0,
+      51.0,
+      0.0,
+      0.0,
+      51.0,
+      51.0,
+      0.0,
+      50.0,
+      51.0,
+      0.0,
+      50.0,
+      51.0,
+      51.0,
+      0.0,
+      50.0,
+      50.0,
+      0.0,
+      50.0,
+      50.0,
+      11.0,
+      0.0,
+      50.0,
+      25.0,
+      0.0,
+      25.0
+    ],
+    "tasks_completed": 0,
+    "current_task": {
+      "task_id": "096a252f-c92c-4ad9-9cbe-c910881d3e88",
+      "type": "matrix_multiply",
+      "status": "pending"
+    },
+    "last_result": {},
+    "start_time": 1761749361.822639
+  }
+}

@@ -7,7 +7,7 @@
       "memory_used": 1596,
       "utilization": 0
     },
-    "last_seen": "2025-10-29T16:30:35.016484Z",
+    "last_seen": "2025-10-29T18:27:15.337120Z",
     "uptime": 1761749239.352345,
     "utilization": 5.0,
     "rewards": 19.0851,
@@ -77,117 +77,119 @@
     "tasks_completed": 202,
     "current_task": null,
     "last_result": {
-      "task_id": "ai-2110449800657",
+      "task_id": "ai-ef9045b616",
       "status": "skipped",
       "metrics": {
         "task_type": "ai",
         "message": "Unknown task type",
         "duration": 0.0
       },
-      "model_name": "conv-demo",
-      "reward": 0.0
+      "model_name": "mlp-classifier",
+      "reward": 0.0,
+      "wallet": null,
+      "task_type": "ai"
     },
     "start_time": 1761750606.179619,
     "reward_history": [
       {
         "reward": 0.0,
-        "task_id": "ai-6654659655756",
-        "timestamp": "2025-10-29T16:26:14.291992Z"
+        "task_id": "ai-87a24feb54",
+        "timestamp": "2025-10-29T18:22:40.863599Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-9907186059012",
-        "timestamp": "2025-10-29T16:26:27.985574Z"
+        "task_id": "ai-b9fbfeebf7",
+        "timestamp": "2025-10-29T18:22:54.874033Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-5135807780721",
-        "timestamp": "2025-10-29T16:26:41.728097Z"
+        "task_id": "ai-a8f7739792",
+        "timestamp": "2025-10-29T18:23:08.827205Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-3865283296989",
-        "timestamp": "2025-10-29T16:26:55.408297Z"
+        "task_id": "ai-e4f4d18303",
+        "timestamp": "2025-10-29T18:23:22.726570Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-8328156082753",
-        "timestamp": "2025-10-29T16:27:09.083985Z"
+        "task_id": "ai-efcf18aa9e",
+        "timestamp": "2025-10-29T18:23:36.548443Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-3625285224712",
-        "timestamp": "2025-10-29T16:27:22.771060Z"
+        "task_id": "ai-cb8c095bce",
+        "timestamp": "2025-10-29T18:23:50.307170Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-5159806547564",
-        "timestamp": "2025-10-29T16:27:36.479404Z"
+        "task_id": "ai-39855bc3c9",
+        "timestamp": "2025-10-29T18:24:04.015639Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-2454477574854",
-        "timestamp": "2025-10-29T16:27:50.163183Z"
+        "task_id": "ai-575ce29b2e",
+        "timestamp": "2025-10-29T18:24:18.009530Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-6760084442339",
-        "timestamp": "2025-10-29T16:28:03.933803Z"
+        "task_id": "ai-c0c62aec74",
+        "timestamp": "2025-10-29T18:24:31.907097Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-8850915390349",
-        "timestamp": "2025-10-29T16:28:17.765471Z"
+        "task_id": "ai-def1cea139",
+        "timestamp": "2025-10-29T18:24:45.747415Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-1877085617414",
-        "timestamp": "2025-10-29T16:28:31.455371Z"
+        "task_id": "ai-308cf31b22",
+        "timestamp": "2025-10-29T18:24:59.579660Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-1187001564857",
-        "timestamp": "2025-10-29T16:28:45.273429Z"
+        "task_id": "ai-7841455190",
+        "timestamp": "2025-10-29T18:25:13.286410Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-6125878099284",
-        "timestamp": "2025-10-29T16:28:58.951637Z"
+        "task_id": "ai-07a12eff62",
+        "timestamp": "2025-10-29T18:25:27.272398Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-5038062582741",
-        "timestamp": "2025-10-29T16:29:12.652237Z"
+        "task_id": "ai-981a8eb4d5",
+        "timestamp": "2025-10-29T18:25:41.200287Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-1169957915261",
-        "timestamp": "2025-10-29T16:29:26.345090Z"
+        "task_id": "ai-43334674ad",
+        "timestamp": "2025-10-29T18:25:55.073023Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-3951670577494",
-        "timestamp": "2025-10-29T16:29:40.066330Z"
+        "task_id": "ai-67d9957903",
+        "timestamp": "2025-10-29T18:26:08.861457Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-4158606224340",
-        "timestamp": "2025-10-29T16:29:53.788464Z"
+        "task_id": "ai-7eaf716e7e",
+        "timestamp": "2025-10-29T18:26:22.578395Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-7522402964845",
-        "timestamp": "2025-10-29T16:30:07.483303Z"
+        "task_id": "ai-b1d6b493f8",
+        "timestamp": "2025-10-29T18:26:36.283982Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-8066225236199",
-        "timestamp": "2025-10-29T16:30:21.319856Z"
+        "task_id": "ai-8cc4e25570",
+        "timestamp": "2025-10-29T18:26:50.216302Z"
       },
       {
         "reward": 0.0,
-        "task_id": "ai-2110449800657",
-        "timestamp": "2025-10-29T16:30:35.016474Z"
+        "task_id": "ai-ef9045b616",
+        "timestamp": "2025-10-29T18:27:04.061607Z"
       }
     ],
     "last_reward": 0.0,
@@ -252,6 +254,7 @@
       5.0,
       5.0,
       5.0
-    ]
+    ],
+    "role": "worker"
   }
 }

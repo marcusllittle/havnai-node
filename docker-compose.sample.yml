@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  havnai-node:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    environment:
+      - SERVER_URL=http://YOUR_SERVER_IP:5001
+      - WALLET=0xYOUR_WALLET_ADDRESS
+      - CREATOR_MODE=false
+      - HAVNAI_HOME=/data/.havnai
+    volumes:
+      - ~/.havnai:/data/.havnai
+    restart: unless-stopped

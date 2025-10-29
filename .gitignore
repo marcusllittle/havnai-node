@@ -1,0 +1,5 @@
+.venv/
+client/__pycache__/
+server/__pycache__/
+node/logs/
+server/logs/

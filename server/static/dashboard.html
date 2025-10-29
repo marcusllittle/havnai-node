@@ -47,6 +47,20 @@
       letter-spacing: 0.3px;
     }
 
+    p.links {
+      margin-top: 0.75rem;
+    }
+
+    p.links a {
+      color: #5fe4ff;
+      margin-right: 1rem;
+      text-decoration: none;
+    }
+
+    p.links a:hover {
+      text-decoration: underline;
+    }
+
     .health-summary {
       width: 100%;
       max-width: 1080px;
@@ -219,6 +233,30 @@
       background: rgba(186, 139, 255, 0.07);
     }
 
+    .models-panel {
+      width: 100%;
+      max-width: 1080px;
+      margin-top: 2.5rem;
+      background: rgba(0, 20, 32, 0.9);
+      border: 1px solid rgba(95, 228, 255, 0.12);
+      border-radius: 20px;
+      padding: 1.8rem 2rem;
+      box-shadow: 0 26px 70px rgba(0, 190, 255, 0.15);
+      overflow-x: auto;
+    }
+
+    .models-panel h2 {
+      margin: 0 0 1rem;
+      color: var(--accent);
+      font-size: 1.2rem;
+    }
+
+    .models-panel table {
+      width: 100%;
+      min-width: 640px;
+      font-size: 0.88rem;
+    }
+
     @media (max-width: 768px) {
       header.hero h1 { font-size: 2.2rem; }
       .grid { padding: 1.6rem; }
@@ -230,6 +268,7 @@
   <header class="hero">
     <h1>HavnAI Grid Telemetry</h1>
     <p>Stage 5A · Creator Mode & Public Jobs · Powered by $HAI</p>
+    <p class="links"><a href="/join">Join the Grid</a> · <a href="/network/leaderboard">Leaderboard</a></p>
   </header>
 
   <section class="health-summary">
@@ -308,6 +347,29 @@
         <tr>
           <td colspan="8" style="text-align:center; padding: 1.4rem; color: var(--text-muted);">
             Waiting for public jobs…
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="models-panel">
+    <h2>Model Catalog</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Weight</th>
+          <th>Source</th>
+          <th>Nodes</th>
+          <th>Tags</th>
+          <th>Size</th>
+        </tr>
+      </thead>
+      <tbody id="modelCatalog">
+        <tr>
+          <td colspan="6" style="text-align:center; padding: 1.2rem; color: var(--text-muted);">
+            Gathering catalog…
           </td>
         </tr>
       </tbody>

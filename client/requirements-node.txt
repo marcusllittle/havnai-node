@@ -1,0 +1,9 @@
+requests
+numpy
+onnxruntime
+psutil
+# Creator mode (optional)
+torch
+diffusers
+safetensors
+huggingface-hub

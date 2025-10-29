@@ -14,6 +14,7 @@ const summaryBacklog = document.getElementById("summaryBacklog");
 const summarySync = document.getElementById("summarySync");
 const logList = document.getElementById("logList");
 const jobFeedBody = document.getElementById("jobFeed");
+const modelCatalogBody = document.getElementById("modelCatalog");
 
 function setStatus(message = "", tone = "info") {
   statusEl.textContent = message;
@@ -44,11 +45,12 @@ function renderNodes(nodes, rewardsMap) {
       const lastSeen = node.last_seen ? new Date(node.last_seen).toLocaleTimeString() : "—";
       const weight = Number(node.model_weight ?? 1).toFixed(2);
       const badgeClass = node.role === "creator" ? "badge creator" : "badge";
+      const displayName = node.node_name || node.node_id;
       const creatorBadge = node.role === "creator" ? ' <span class="badge creator">Creator Mode Active</span>' : "";
       const typeClass = taskType === "IMAGE_GEN" ? "job-type-creator" : "job-type-onnx";
       return `
         <tr class="${typeClass}">
-          <td><span class="${badgeClass}">${node.node_id}</span>${creatorBadge}</td>
+          <td><span class="${badgeClass}">${displayName}</span>${creatorBadge}</td>
           <td>${taskType}</td>
           <td>${model}</td>
           <td>${weight}</td>
@@ -127,6 +129,35 @@ function renderJobFeed(feed) {
   jobFeedBody.innerHTML = rows;
 }
 
+function renderModelCatalog(models) {
+  if (!Array.isArray(models) || models.length === 0) {
+    modelCatalogBody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align:center; padding: 1.2rem; color: var(--text-muted);">
+          No models registered yet.
+        </td>
+      </tr>`;
+    return;
+  }
+
+  const rows = models.map((model) => {
+    const nodes = Array.isArray(model.nodes) ? model.nodes.join(", ") : (model.nodes || "server");
+    const tags = Array.isArray(model.tags) ? model.tags.join(", ") : (model.tags || "");
+    const size = model.size ? `${(Number(model.size) / (1024 * 1024)).toFixed(2)} MB` : "—";
+    return `
+      <tr>
+        <td>${model.model}</td>
+        <td>${Number(model.weight ?? 1).toFixed(2)}</td>
+        <td>${model.source || "unknown"}</td>
+        <td>${nodes}</td>
+        <td>${tags}</td>
+        <td>${size}</td>
+      </tr>`;
+  }).join("");
+
+  modelCatalogBody.innerHTML = rows;
+}
+
 async function fetchTelemetry() {
   try {
     const [nodesRes, rewardsRes, logsRes] = await Promise.all([
@@ -146,6 +177,7 @@ async function fetchTelemetry() {
     renderNodes(nodesJson.nodes ?? [], rewardsJson.rewards ?? {});
     renderSummary(nodesJson.summary, nodesJson.job_summary);
     renderJobFeed(nodesJson.job_summary?.feed ?? []);
+    renderModelCatalog(nodesJson.models_catalog ?? []);
     renderLogs(logsJson.logs ?? []);
     setStatus(`Sync successful. Next update in ${POLL_INTERVAL / 1000}s.`);
   } catch (error) {

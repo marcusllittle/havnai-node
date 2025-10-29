@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HavnAI Node Telemetry</title>
+  <title>HavnAI Grid · Stage 4</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css" integrity="sha512-oHDEc8XedS+d2cN2B3d9kM0C5s1Y+sLuRfCp6HIMi7Q5x0sF4XKQ4uvo9Z3p2dg5p3u5l5pX5ho2BZHmOj5rkg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
   <style>
     :root {
       --bg: #000913;
-      --panel: rgba(0, 25, 36, 0.82);
+      --panel: rgba(0, 25, 36, 0.85);
       --accent: #5fe4ff;
       --accent-soft: rgba(95, 228, 255, 0.18);
       --text: #d2f3ff;
-      --text-muted: #86b1c9;
+      --text-muted: #88bcd4;
       --error: #ff9b6a;
       --success: #7dffb0;
     }
@@ -35,23 +35,23 @@
     }
 
     header.hero h1 {
-      font-size: 2.75rem;
+      font-size: 2.9rem;
+      margin: 0;
       color: var(--accent);
-      margin: 0 0 0.35rem;
     }
 
     header.hero p {
-      margin: 0;
+      margin: 0.4rem 0 0;
       color: var(--text-muted);
       font-size: 1rem;
-      letter-spacing: 0.4px;
+      letter-spacing: 0.3px;
     }
 
     .health-summary {
       width: 100%;
-      max-width: 1040px;
+      max-width: 1080px;
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 1rem;
     }
 
@@ -60,14 +60,14 @@
       border: 1px solid var(--accent-soft);
       border-radius: 16px;
       padding: 1rem 1.25rem;
+      box-shadow: 0 18px 50px rgba(0, 190, 255, 0.15);
       display: flex;
       flex-direction: column;
       gap: 0.35rem;
-      box-shadow: 0 16px 50px rgba(0, 200, 255, 0.12);
     }
 
     .summary-card span.label {
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       text-transform: uppercase;
       color: var(--text-muted);
       letter-spacing: 0.12em;
@@ -80,22 +80,22 @@
 
     .grid {
       width: 100%;
-      max-width: 1040px;
+      max-width: 1080px;
       background: var(--panel);
       border: 1px solid var(--accent-soft);
       border-radius: 22px;
       padding: 2rem;
       margin-top: 2.5rem;
-      box-shadow: 0 35px 80px rgba(0, 190, 255, 0.15);
+      box-shadow: 0 35px 80px rgba(0, 190, 255, 0.18);
       overflow-x: auto;
-      backdrop-filter: blur(10px);
+      backdrop-filter: blur(12px);
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.92rem;
-      min-width: 860px;
+      font-size: 0.9rem;
+      min-width: 820px;
     }
 
     thead {
@@ -113,77 +113,22 @@
       font-weight: 600;
       color: var(--accent);
       text-transform: uppercase;
-      font-size: 0.78rem;
+      font-size: 0.75rem;
       letter-spacing: 0.08em;
     }
 
-    td span.badge {
+    .badge {
       display: inline-flex;
       padding: 0.2rem 0.7rem;
       border-radius: 999px;
       background: rgba(95, 228, 255, 0.18);
       color: var(--accent);
-      font-size: 0.8rem;
+      font-size: 0.82rem;
       letter-spacing: 0.04em;
-    }
-
-    .util-bar {
-      position: relative;
-      width: 160px;
-      height: 10px;
-      border-radius: 999px;
-      background: rgba(95, 228, 255, 0.1);
-      overflow: hidden;
-    }
-
-    .util-bar .fill {
-      height: 100%;
-      border-radius: inherit;
-      background: linear-gradient(90deg, #00d6ff, #0076ff);
-      transition: width 0.3s ease;
-    }
-
-    .util-bar span {
-      position: absolute;
-      top: -20px;
-      right: 0;
-      font-size: 0.75rem;
-      color: var(--text-muted);
-    }
-
-    .task-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      padding: 0.3rem 0.7rem;
-      border-radius: 999px;
-      font-size: 0.78rem;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
-
-    .task-chip.idle {
-      background: rgba(95, 228, 255, 0.08);
-      color: var(--accent);
-    }
-
-    .task-chip.running {
-      background: rgba(125, 255, 176, 0.15);
-      color: var(--success);
-    }
-
-    .task-chip.failed {
-      background: rgba(255, 155, 106, 0.15);
-      color: var(--error);
-    }
-
-    .task-chip.skipped {
-      background: rgba(95, 228, 255, 0.12);
-      color: var(--text-muted);
     }
 
     .status {
-      margin-bottom: 1.25rem;
+      margin-bottom: 1.2rem;
       font-size: 0.85rem;
       min-height: 1.1rem;
       color: var(--text-muted);
@@ -191,13 +136,13 @@
 
     .logs-panel {
       width: 100%;
-      max-width: 1040px;
+      max-width: 1080px;
       margin-top: 2.5rem;
-      background: rgba(0, 22, 35, 0.85);
-      border: 1px solid rgba(95, 228, 255, 0.1);
+      background: rgba(0, 25, 38, 0.9);
+      border: 1px solid rgba(95, 228, 255, 0.12);
       border-radius: 20px;
       padding: 1.6rem 1.9rem;
-      box-shadow: 0 24px 70px rgba(0, 190, 255, 0.12);
+      box-shadow: 0 24px 70px rgba(0, 190, 255, 0.15);
     }
 
     .logs-panel h2 {
@@ -228,18 +173,27 @@
       margin-right: 0.45rem;
     }
 
+    .util {
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .reward {
+      font-weight: 600;
+      color: var(--success);
+    }
+
     @media (max-width: 768px) {
-      header.hero h1 { font-size: 2.15rem; }
+      header.hero h1 { font-size: 2.2rem; }
       .grid { padding: 1.6rem; }
       th, td { padding: 0.6rem 0.75rem; }
-      table { min-width: 720px; }
     }
   </style>
 </head>
 <body>
   <header class="hero">
-    <h1>HavnAI Node Operations</h1>
-    <p>Stage 3 · Rewards, Telemetry & Simulated Workloads</p>
+    <h1>HavnAI Grid Telemetry</h1>
+    <p>Stage 4 · ONNX Inference Rewards · Powered by $HAI</p>
   </header>
 
   <section class="health-summary">
@@ -252,20 +206,20 @@
       <strong id="summaryOnline">0</strong>
     </div>
     <div class="summary-card">
-      <span class="label">Offline</span>
-      <strong id="summaryOffline">0</strong>
-    </div>
-    <div class="summary-card">
       <span class="label">Avg Utilization</span>
       <strong id="summaryUtil">0%</strong>
     </div>
     <div class="summary-card">
-      <span class="label">Total Rewards</span>
+      <span class="label">Grid Rewards</span>
       <strong id="summaryRewards">0 HAI</strong>
     </div>
     <div class="summary-card">
       <span class="label">Task Backlog</span>
       <strong id="summaryBacklog">0</strong>
+    </div>
+    <div class="summary-card">
+      <span class="label">Last Sync</span>
+      <strong id="summarySync">—</strong>
     </div>
   </section>
 
@@ -275,18 +229,17 @@
       <thead>
         <tr>
           <th>Node</th>
-          <th>GPU</th>
-          <th>Utilization</th>
-          <th>Rewards (HAI)</th>
-          <th>Tasks</th>
-          <th>Uptime</th>
+          <th>Model</th>
+          <th>Inference (ms)</th>
+          <th>GPU Util %</th>
+          <th>Reward (HAI)</th>
           <th>Last Seen</th>
-          <th>Last Result</th>
+          <th>Uptime</th>
         </tr>
       </thead>
       <tbody id="nodeTable">
         <tr>
-          <td colspan="8" style="text-align:center; padding: 1.8rem; color: var(--text-muted);">
+          <td colspan="7" style="text-align:center; padding: 1.6rem; color: var(--text-muted);">
             Awaiting telemetry…
           </td>
         </tr>
@@ -295,9 +248,9 @@
   </section>
 
   <section class="logs-panel">
-    <h2>Network Events</h2>
+    <h2>Recent Activity</h2>
     <ul id="logList">
-      <li>Booting telemetry system…</li>
+      <li><span class="time">—</span>Boot sequence initiated…</li>
     </ul>
   </section>
 

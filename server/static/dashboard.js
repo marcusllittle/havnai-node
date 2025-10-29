@@ -7,10 +7,10 @@ const nodeTable = document.getElementById("nodeTable");
 const statusEl = document.getElementById("status");
 const summaryTotal = document.getElementById("summaryTotal");
 const summaryOnline = document.getElementById("summaryOnline");
-const summaryOffline = document.getElementById("summaryOffline");
 const summaryUtil = document.getElementById("summaryUtil");
 const summaryRewards = document.getElementById("summaryRewards");
 const summaryBacklog = document.getElementById("summaryBacklog");
+const summarySync = document.getElementById("summarySync");
 const logList = document.getElementById("logList");
 
 function setStatus(message = "", tone = "info") {
@@ -18,43 +18,11 @@ function setStatus(message = "", tone = "info") {
   statusEl.style.color = tone === "error" ? "var(--error)" : "var(--text-muted)";
 }
 
-function renderUtilBar(utilization) {
-  const percent = Math.min(100, Math.max(0, Number(utilization) || 0));
-  return `
-    <div class="util-bar">
-      <div class="fill" style="width: ${percent}%;"></div>
-      <span>${percent.toFixed(0)}%</span>
-    </div>`;
-}
-
-function renderTaskChip(node) {
-  const current = node.current_task;
-  const last = node.last_result || {};
-
-  if (current && current.task_id) {
-    return `<span class="task-chip running">Running · ${current.type || current.task_id.slice(0, 6)}</span>`;
-  }
-
-  if (last && last.status) {
-    const status = String(last.status).toLowerCase();
-    const cls = {
-      success: "task-chip idle",
-      skipped: "task-chip skipped",
-      failed: "task-chip failed",
-    }[status] || "task-chip idle";
-    const label = last.type ? last.type : (last.task_id ? last.task_id.slice(0, 6) : "Task");
-    const statusText = status.toUpperCase();
-    return `<span class="${cls}">${statusText} · ${label}</span>`;
-  }
-
-  return '<span class="task-chip idle">Idle</span>';
-}
-
 function renderNodes(nodes, rewardsMap) {
   if (!Array.isArray(nodes) || nodes.length === 0) {
     nodeTable.innerHTML = `
       <tr>
-        <td colspan="8" style="text-align:center; padding: 1.8rem; color: var(--text-muted);">
+        <td colspan="7" style="text-align:center; padding: 1.6rem; color: var(--text-muted);">
           No nodes connected yet.
         </td>
       </tr>`;
@@ -65,19 +33,21 @@ function renderNodes(nodes, rewardsMap) {
     .slice()
     .sort((a, b) => a.node_id.localeCompare(b.node_id))
     .map((node) => {
-      const gpu = (node.gpu && typeof node.gpu === "object") ? node.gpu : {};
       const reward = rewardsMap[node.node_id] ?? node.rewards ?? 0;
-      const gpuLabel = gpu.gpu_name || gpu.name || "—";
+      const model = node.model_name || "—";
+      const inference = node.inference_time_ms != null ? Number(node.inference_time_ms).toFixed(2) : "—";
+      const util = Number(node.gpu_utilization ?? 0).toFixed(0);
+      const rewardFmt = Number(reward).toFixed(6);
+      const lastSeen = node.last_seen ? new Date(node.last_seen).toLocaleTimeString() : "—";
       return `
         <tr>
           <td><span class="badge">${node.node_id}</span></td>
-          <td>${gpuLabel}</td>
-          <td>${renderUtilBar(node.avg_utilization ?? node.utilization)}</td>
-          <td>${Number(reward).toFixed(6)}</td>
-          <td>${renderTaskChip(node)}</td>
+          <td>${model}</td>
+          <td>${inference}</td>
+          <td class="util">${util}%</td>
+          <td class="reward">${rewardFmt}</td>
+          <td>${lastSeen}</td>
           <td>${node.uptime_human || "—"}</td>
-          <td>${node.last_seen ? new Date(node.last_seen).toLocaleTimeString() : "—"}</td>
-          <td>${renderResultTooltip(node.last_result)}</td>
         </tr>`;
     })
     .join("");
@@ -85,34 +55,20 @@ function renderNodes(nodes, rewardsMap) {
   nodeTable.innerHTML = rows;
 }
 
-function renderResultTooltip(result) {
-  if (!result || !result.status) {
-    return '<span class="task-chip idle">Awaiting</span>';
-  }
-  const status = String(result.status).toLowerCase();
-  const cls = {
-    success: "task-chip idle",
-    failed: "task-chip failed",
-    skipped: "task-chip skipped",
-  }[status] || "task-chip idle";
-  const label = result.type || (result.task_id ? result.task_id.slice(0, 6) : "Result");
-  return `<span class="${cls}">${status.toUpperCase()} · ${label}</span>`;
-}
-
 function renderSummary(summary, rewardTotal) {
   summary = summary || {};
   summaryTotal.textContent = summary.total_nodes ?? 0;
   summaryOnline.textContent = summary.online_nodes ?? 0;
-  summaryOffline.textContent = summary.offline_nodes ?? 0;
   const util = Number(summary.avg_utilization ?? 0).toFixed(1);
   summaryUtil.textContent = `${util}%`;
   summaryRewards.textContent = `${Number(rewardTotal ?? 0).toFixed(6)} HAI`;
   summaryBacklog.textContent = summary.tasks_backlog ?? 0;
+  summarySync.textContent = new Date().toLocaleTimeString();
 }
 
 function renderLogs(logs) {
   if (!Array.isArray(logs) || logs.length === 0) {
-    logList.innerHTML = '<li>No recent events.</li>';
+    logList.innerHTML = '<li><span class="time">—</span>No recent events.</li>';
     return;
   }
   const items = logs
@@ -131,7 +87,7 @@ async function fetchTelemetry() {
     const [nodesRes, rewardsRes, logsRes] = await Promise.all([
       fetch(NODE_ENDPOINT),
       fetch(REWARD_ENDPOINT),
-      fetch(LOG_ENDPOINT)
+      fetch(LOG_ENDPOINT),
     ]);
 
     if (!nodesRes.ok) throw new Error(`Nodes request failed: ${nodesRes.status}`);

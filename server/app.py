@@ -4,79 +4,163 @@ import json
 import random
 import threading
 import time
-import uuid
 from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
+import numpy as np
+import onnx
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from onnx import TensorProto, helper
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+MODELS_DIR = STATIC_DIR / "models"
 REGISTRY_FILE = BASE_DIR / "nodes.json"
 
-REWARD_INTERVAL = 60  # seconds
-TASK_SCAN_INTERVAL = 20  # seconds
-REWARD_MULTIPLIER = 0.01  # reward += avg_utilization * 0.01 each minute
+MODEL_STATS: Dict[str, Dict[str, float]] = {}
+EVENT_LOGS: deque = deque(maxlen=200)
+NODES: Dict[str, Dict[str, Any]] = {}
+TASKS: Dict[str, Dict[str, Any]] = {}
+LOCK = threading.Lock()
+
 ONLINE_THRESHOLD = 120  # seconds
-MAX_LOG_ENTRIES = 200
 
 app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static")
 CORS(app)
-
-lock = threading.Lock()
-nodes: Dict[str, Dict[str, Any]] = {}
-tasks: Dict[str, Dict[str, Any]] = {}
-event_logs: deque = deque(maxlen=MAX_LOG_ENTRIES)
 
 
 # ---------------------------------------------------------------------------
 # Utility helpers
 # ---------------------------------------------------------------------------
 
-def now_ts() -> float:
-    return time.time()
-
-
 def iso_now() -> str:
     return datetime.utcnow().isoformat() + "Z"
 
 
-def parse_timestamp(ts: Any) -> float:
-    if ts is None:
-        return now_ts()
-    if isinstance(ts, (int, float)):
-        return float(ts)
-    if isinstance(ts, str):
+def unix_now() -> float:
+    return time.time()
+
+
+def parse_timestamp(value: Any) -> float:
+    if value is None:
+        return unix_now()
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
         try:
-            return datetime.fromisoformat(ts.replace("Z", "")).timestamp()
+            return datetime.fromisoformat(value.replace("Z", "")).timestamp()
         except ValueError:
             try:
-                return float(ts)
+                return float(value)
             except ValueError:
-                return now_ts()
-    return now_ts()
+                return unix_now()
+    return unix_now()
 
 
-def format_duration(seconds: int) -> str:
+def format_duration(seconds: float) -> str:
     seconds = max(0, int(seconds))
-    hours, remainder = divmod(seconds, 3600)
-    minutes, secs = divmod(remainder, 60)
-    parts: List[str] = []
-    if hours:
-        parts.append(f"{hours}h")
-    if minutes:
-        parts.append(f"{minutes}m")
-    parts.append(f"{secs}s")
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    parts = []
+    if h:
+        parts.append(f"{h}h")
+    if m:
+        parts.append(f"{m}m")
+    parts.append(f"{s}s")
     return " ".join(parts)
 
 
 def log_event(message: str, level: str = "info") -> None:
     entry = {"timestamp": iso_now(), "level": level, "message": message}
-    event_logs.append(entry)
+    EVENT_LOGS.append(entry)
     print(f"[{entry['timestamp']}] ({level.upper()}) {message}")
+
+
+# ---------------------------------------------------------------------------
+# Model generation
+# ---------------------------------------------------------------------------
+
+def ensure_directories() -> None:
+    STATIC_DIR.mkdir(parents=True, exist_ok=True)
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def build_mlp_model(path: Path, input_dim: int, hidden_dim: int, output_dim: int) -> None:
+    if path.exists():
+        return
+
+    weights1 = np.random.randn(input_dim, hidden_dim).astype(np.float32) * 0.1
+    bias1 = np.random.randn(hidden_dim).astype(np.float32) * 0.1
+    weights2 = np.random.randn(hidden_dim, output_dim).astype(np.float32) * 0.1
+    bias2 = np.random.randn(output_dim).astype(np.float32) * 0.1
+
+    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, input_dim])
+    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, output_dim])
+
+    W1 = helper.make_tensor("W1", TensorProto.FLOAT, weights1.shape, weights1.flatten())
+    B1 = helper.make_tensor("B1", TensorProto.FLOAT, bias1.shape, bias1)
+    W2 = helper.make_tensor("W2", TensorProto.FLOAT, weights2.shape, weights2.flatten())
+    B2 = helper.make_tensor("B2", TensorProto.FLOAT, bias2.shape, bias2)
+
+    node1 = helper.make_node("Gemm", ["input", "W1", "B1"], ["h1"], alpha=1.0, beta=1.0)
+    relu = helper.make_node("Relu", ["h1"], ["relu1"]) 
+    node2 = helper.make_node("Gemm", ["relu1", "W2", "B2"], ["output"], alpha=1.0, beta=1.0)
+
+    graph = helper.make_graph([node1, relu, node2], "mlp_graph", [input_tensor], [output_tensor], [W1, B1, W2, B2])
+    model = helper.make_model(graph, producer_name="havnai")
+    onnx.save(model, path)
+
+
+def build_conv_model(path: Path) -> None:
+    if path.exists():
+        return
+
+    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 1, 16, 16])
+    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 8, 14, 14])
+
+    weights = np.random.randn(8, 1, 3, 3).astype(np.float32) * 0.05
+    bias = np.random.randn(8).astype(np.float32) * 0.05
+
+    W = helper.make_tensor("conv_W", TensorProto.FLOAT, weights.shape, weights.flatten())
+    B = helper.make_tensor("conv_B", TensorProto.FLOAT, bias.shape, bias)
+    conv = helper.make_node("Conv", ["input", "conv_W", "conv_B"], ["conv_out"], pads=[0, 0, 0, 0])
+    relu = helper.make_node("Relu", ["conv_out"], ["relu_out"])
+    graph = helper.make_graph([conv, relu], "conv_graph", [input_tensor], [output_tensor], [W, B])
+    model = helper.make_model(graph, producer_name="havnai")
+    onnx.save(model, path)
+
+
+MODEL_CATALOG = [
+    {
+        "name": "mlp-classifier",
+        "filename": "mlp-classifier.onnx",
+        "input_shape": [1, 64],
+        "reward_weight": 1.25,
+        "builder": lambda path: build_mlp_model(path, input_dim=64, hidden_dim=32, output_dim=10),
+    },
+    {
+        "name": "conv-demo",
+        "filename": "conv-demo.onnx",
+        "input_shape": [1, 1, 16, 16],
+        "reward_weight": 1.5,
+        "builder": build_conv_model,
+    },
+]
+
+
+def ensure_model_catalog() -> None:
+    ensure_directories()
+    for item in MODEL_CATALOG:
+        path = MODELS_DIR / item["filename"]
+        builder = item.get("builder")
+        if callable(builder):
+            builder(path)
+        item["path"] = path
+        item["url"] = f"/static/models/{path.name}"
+        MODEL_STATS.setdefault(item["name"], {"count": 0.0, "total_time": 0.0})
 
 
 # ---------------------------------------------------------------------------
@@ -86,136 +170,72 @@ def log_event(message: str, level: str = "info") -> None:
 def load_nodes() -> Dict[str, Dict[str, Any]]:
     if not REGISTRY_FILE.exists():
         return {}
-
     with REGISTRY_FILE.open() as f:
         data = json.load(f)
-
-    current = now_ts()
-    for node_id, info in data.items():
+    current = unix_now()
+    for info in data.values():
         info.setdefault("os", "unknown")
         info.setdefault("gpu", {})
         info.setdefault("rewards", 0.0)
         info.setdefault("utilization", 0)
         info.setdefault("avg_utilization", info.get("utilization", 0))
-        info.setdefault("utilization_samples", [])
         info.setdefault("tasks_completed", 0)
         info.setdefault("current_task", None)
         info.setdefault("last_result", {})
+        info.setdefault("reward_history", [])
+        info.setdefault("last_reward", 0.0)
+        info.setdefault("start_time", current)
         info.setdefault("last_seen", iso_now())
-        info["last_seen_unix"] = parse_timestamp(info.get("last_seen"))
-        start_time = info.get("start_time")
-        info["start_time"] = parse_timestamp(start_time) if start_time else current
+        info["last_seen_unix"] = parse_timestamp(info["last_seen"])
     return data
 
 
-def save_nodes(nodes_data: Dict[str, Dict[str, Any]]) -> None:
-    serializable: Dict[str, Dict[str, Any]] = {}
-    for node_id, info in nodes_data.items():
-        data = dict(info)
-        # ensure only JSON-friendly values
-        data["utilization_samples"] = list(data.get("utilization_samples", []))
-        data.pop("last_seen_unix", None)
-        serializable[node_id] = data
-
+def save_nodes() -> None:
+    payload: Dict[str, Dict[str, Any]] = {}
+    for node_id, info in NODES.items():
+        serial = dict(info)
+        serial.pop("last_seen_unix", None)
+        payload[node_id] = serial
     REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
     with REGISTRY_FILE.open("w") as f:
-        json.dump(serializable, f, indent=2)
+        json.dump(payload, f, indent=2)
 
 
-nodes = load_nodes()
-for node in nodes.values():
-    node["last_seen_unix"] = parse_timestamp(node.get("last_seen"))
-
-log_event(f"Booted telemetry server with {len(nodes)} cached node(s).")
+ensure_model_catalog()
+NODES = load_nodes()
+log_event(f"HavnAI telemetry online with {len(NODES)} cached node(s).", "info")
 
 
 # ---------------------------------------------------------------------------
-# Reward + simulation engines
+# Task helpers
 # ---------------------------------------------------------------------------
-
-def reward_loop() -> None:
-    while True:
-        time.sleep(REWARD_INTERVAL)
-        with lock:
-            updated = False
-            for info in nodes.values():
-                avg_util = info.get("avg_utilization")
-                if avg_util is None:
-                    avg_util = info.get("utilization", 0)
-                reward_increment = float(avg_util) * REWARD_MULTIPLIER
-                info["rewards"] = round(info.get("rewards", 0.0) + reward_increment, 6)
-                updated = True
-            if updated:
-                save_nodes(nodes)
-
 
 def pending_tasks_for_node(node_id: str) -> List[Dict[str, Any]]:
-    return [
-        task
-        for task in tasks.values()
-        if task["assigned_to"] == node_id and task["status"] in {"pending", "assigned"}
-    ]
+    return [task for task in TASKS.values() if task["assigned_to"] == node_id and task["status"] in {"pending", "assigned"}]
 
 
-def create_task_for_node(node_id: str) -> Dict[str, Any]:
-    task_type = random.choice(["matrix_multiply", "vector_dot", "noise_simulation"])
-    if task_type == "matrix_multiply":
-        size = random.choice([64, 96, 128, 192, 256])
-        repeats = random.randint(1, 3)
-        payload = {"size": size, "repeats": repeats}
-    elif task_type == "vector_dot":
-        length = random.choice([50000, 75000, 100000])
-        repeats = random.randint(2, 5)
-        payload = {"length": length, "repeats": repeats}
-    else:  # noise simulation / random workloads
-        iterations = random.randint(20000, 60000)
-        payload = {"iterations": iterations}
-
+def issue_ai_task(node_id: str) -> Dict[str, Any]:
+    model = random.choice(MODEL_CATALOG)
+    task_id = f"ai-{random.randrange(10**12, 10**13)}"
     task = {
-        "task_id": str(uuid.uuid4()),
-        "type": task_type,
-        "payload": payload,
+        "task_id": task_id,
+        "type": "ai",
+        "model_name": model["name"],
+        "model_url": model["url"],
+        "input_shape": model["input_shape"],
+        "reward_weight": model["reward_weight"],
         "assigned_to": node_id,
         "status": "pending",
-        "created_at": now_ts(),
+        "created_at": unix_now(),
         "assigned_at": None,
         "completed_at": None,
     }
-    tasks[task["task_id"]] = task
-    log_event(f"Scheduled {task_type} task {task['task_id'][:8]} for {node_id}.")
+    TASKS[task_id] = task
     return task
 
 
-def simulation_loop() -> None:
-    while True:
-        time.sleep(TASK_SCAN_INTERVAL)
-        with lock:
-            current_time = now_ts()
-            updated = False
-            for node_id, info in nodes.items():
-                last_seen = info.get("last_seen_unix", current_time)
-                if current_time - last_seen > ONLINE_THRESHOLD:
-                    continue  # node offline
-
-                active_tasks = pending_tasks_for_node(node_id)
-                if not active_tasks:
-                    task = create_task_for_node(node_id)
-                    info["current_task"] = {
-                        "task_id": task["task_id"],
-                        "type": task["type"],
-                        "status": task["status"],
-                    }
-                    updated = True
-            if updated:
-                save_nodes(nodes)
-
-
-threading.Thread(target=reward_loop, daemon=True).start()
-threading.Thread(target=simulation_loop, daemon=True).start()
-
-
 # ---------------------------------------------------------------------------
-# API Routes
+# Routes
 # ---------------------------------------------------------------------------
 
 
@@ -226,160 +246,84 @@ def register():
     if not node_id:
         return jsonify({"error": "missing node_id"}), 400
 
-    is_new_node = False
-    with lock:
-        node = nodes.get(node_id)
-        if node is None:
+    with LOCK:
+        node = NODES.get(node_id)
+        if not node:
             node = {
                 "os": data.get("os", "unknown"),
                 "gpu": data.get("gpu", {}),
-                "start_time": data.get("start_time", now_ts()),
                 "rewards": 0.0,
-                "utilization": 0,
                 "avg_utilization": 0,
-                "utilization_samples": [],
+                "utilization": data.get("utilization", 0),
                 "tasks_completed": 0,
                 "current_task": None,
                 "last_result": {},
+                "reward_history": [],
+                "last_reward": 0.0,
+                "start_time": data.get("start_time", unix_now()),
             }
-            nodes[node_id] = node
-            is_new_node = True
+            NODES[node_id] = node
+            log_event(f"Node {node_id} registered.")
 
         node["os"] = data.get("os", node.get("os", "unknown"))
         node["gpu"] = data.get("gpu", node.get("gpu", {}))
-        node.setdefault("utilization_samples", [])
-        gpu_payload = node["gpu"] if isinstance(node["gpu"], dict) else {}
-        utilization = gpu_payload.get("utilization")
-        if utilization is None:
-            utilization = data.get("utilization", node.get("utilization", 0))
-        utilization = float(utilization or 0)
-        node["utilization"] = utilization
-        samples = node.setdefault("utilization_samples", [])
-        samples.append(utilization)
+        util = data.get("gpu", {}).get("utilization") if isinstance(data.get("gpu"), dict) else data.get("utilization")
+        util = float(util or node.get("utilization", 0))
+        node["utilization"] = util
+        samples = node.setdefault("util_samples", [])
+        samples.append(util)
         if len(samples) > 60:
             samples.pop(0)
-        node["avg_utilization"] = round(sum(samples) / len(samples), 2) if samples else utilization
-
-        start_time = data.get("start_time")
-        if start_time:
-            node["start_time"] = parse_timestamp(start_time)
-        else:
-            node.setdefault("start_time", now_ts())
-
+        node["avg_utilization"] = round(sum(samples) / len(samples), 2) if samples else util
         node["last_seen"] = iso_now()
-        node["last_seen_unix"] = now_ts()
-        node.setdefault("tasks_completed", 0)
-        node.setdefault("rewards", 0.0)
-        node.setdefault("current_task", None)
-        node.setdefault("last_result", {})
-
-        save_nodes(nodes)
-
-    if is_new_node:
-        log_event(f"Node {node_id} registered ({node['os']}).")
+        node["last_seen_unix"] = unix_now()
+        node.setdefault("start_time", data.get("start_time", unix_now()))
+        save_nodes()
 
     return jsonify({"status": "ok", "node": node_id}), 200
 
 
-@app.route("/nodes", methods=["GET"])
-def get_nodes():
-    with lock:
-        now = now_ts()
-        nodes_payload: List[Dict[str, Any]] = []
-        total_util = 0.0
-        online_count = 0
-        pending_total = 0
-        total_rewards = 0.0
-
-        for node_id, info in nodes.items():
-            last_seen_unix = info.get("last_seen_unix", parse_timestamp(info.get("last_seen")))
-            is_online = (now - last_seen_unix) <= ONLINE_THRESHOLD
-            if is_online:
-                online_count += 1
-
-            pending = len(pending_tasks_for_node(node_id))
-            pending_total += pending
-
-            avg_util = float(info.get("avg_utilization", info.get("utilization", 0)))
-            total_util += avg_util
-            total_rewards += float(info.get("rewards", 0.0))
-
-            uptime_seconds = int(now - info.get("start_time", now))
-
-            node_entry = {
-                "node_id": node_id,
-                "os": info.get("os", "unknown"),
-                "gpu": info.get("gpu", {}),
-                "utilization": info.get("utilization", 0),
-                "avg_utilization": avg_util,
-                "rewards": info.get("rewards", 0.0),
-                "tasks_completed": info.get("tasks_completed", 0),
-                "current_task": info.get("current_task"),
-                "last_result": info.get("last_result"),
-                "last_seen": info.get("last_seen"),
-                "uptime_seconds": uptime_seconds,
-                "uptime_human": format_duration(uptime_seconds),
-                "pending_tasks": pending,
-                "online": is_online,
-            }
-            nodes_payload.append(node_entry)
-
-        total_nodes = len(nodes_payload)
-        avg_utilization = round(total_util / total_nodes, 2) if total_nodes else 0.0
-        summary = {
-            "timestamp": iso_now(),
-            "total_nodes": total_nodes,
-            "online_nodes": online_count,
-            "offline_nodes": total_nodes - online_count,
-            "avg_utilization": avg_utilization,
-            "tasks_backlog": pending_total,
-            "total_rewards": round(total_rewards, 6),
-        }
-
-    return jsonify({"nodes": nodes_payload, "summary": summary}), 200
-
-
-@app.route("/rewards", methods=["GET"])
-def get_rewards():
-    with lock:
-        rewards_payload = {nid: info.get("rewards", 0.0) for nid, info in nodes.items()}
-        total = round(sum(rewards_payload.values()), 6)
-    return jsonify({"rewards": rewards_payload, "total": total}), 200
-
-
-@app.route("/tasks", methods=["GET"])
-def get_tasks():
+@app.route("/tasks/ai", methods=["GET"])
+def get_ai_tasks():
     node_id = request.args.get("node_id")
     if not node_id:
         return jsonify({"error": "missing node_id"}), 400
 
-    with lock:
-        if node_id not in nodes:
+    with LOCK:
+        if node_id not in NODES:
             return jsonify({"tasks": []}), 200
 
         pending = pending_tasks_for_node(node_id)
         if not pending:
-            task = create_task_for_node(node_id)
-            nodes[node_id]["current_task"] = {
+            task = issue_ai_task(node_id)
+            pending = [task]
+            NODES[node_id]["current_task"] = {
                 "task_id": task["task_id"],
-                "type": task["type"],
+                "model_name": task["model_name"],
                 "status": task["status"],
             }
-            save_nodes(nodes)
-            pending = [task]
+            save_nodes()
 
         response_tasks = []
         for task in pending:
             if task["status"] == "pending":
                 task["status"] = "assigned"
-                task["assigned_at"] = now_ts()
+                task["assigned_at"] = unix_now()
             response_tasks.append({
                 "task_id": task["task_id"],
-                "type": task["type"],
-                "payload": task.get("payload", {}),
+                "type": "ai",
+                "model_name": task["model_name"],
+                "model_url": task["model_url"],
+                "input_shape": task["input_shape"],
+                "reward_weight": task["reward_weight"],
             })
 
     return jsonify({"tasks": response_tasks}), 200
+
+
+@app.route("/tasks", methods=["GET"])
+def tasks_alias():
+    return get_ai_tasks()
 
 
 @app.route("/results", methods=["POST"])
@@ -394,62 +338,150 @@ def submit_results():
     if not node_id or not task_id:
         return jsonify({"error": "missing node_id or task_id"}), 400
 
-    with lock:
-        task = tasks.get(task_id)
+    with LOCK:
+        task = TASKS.get(task_id)
         if not task:
             return jsonify({"error": "task not found"}), 404
 
         task["status"] = status
-        task["completed_at"] = now_ts()
+        task["completed_at"] = unix_now()
         task["result"] = metrics
-        task_type = task.get("type")
 
-        node = nodes.get(node_id)
+        node = NODES.get(node_id)
+        reward = 0.0
         if node:
+            model_name = task.get("model_name", "unknown-model")
+            inference_time = float(metrics.get("inference_time_ms") or metrics.get("duration", 0) * 1000)
+            gpu_util = float(utilization or node.get("utilization", 0))
+            reward_weight = float(task.get("reward_weight", 1.0))
+            if inference_time > 0:
+                reward = round((gpu_util * reward_weight) / inference_time, 6)
+            node["rewards"] = round(node.get("rewards", 0.0) + reward, 6)
+            node["last_reward"] = reward
+            history = node.setdefault("reward_history", [])
+            history.append({"reward": reward, "task_id": task_id, "timestamp": iso_now()})
+            if len(history) > 20:
+                history.pop(0)
             node["last_seen"] = iso_now()
-            node["last_seen_unix"] = now_ts()
+            node["last_seen_unix"] = unix_now()
             node["last_result"] = {
                 "task_id": task_id,
-                "type": task_type,
                 "status": status,
                 "metrics": metrics,
-                "completed_at": iso_now(),
+                "model_name": model_name,
+                "reward": reward,
             }
             if status == "success":
                 node["tasks_completed"] = node.get("tasks_completed", 0) + 1
-
             node["current_task"] = None
-
             if utilization is not None:
-                try:
-                    util_val = float(utilization)
-                    node["utilization"] = util_val
-                    samples = node.setdefault("utilization_samples", [])
-                    samples.append(util_val)
-                    if len(samples) > 60:
-                        samples.pop(0)
-                    node["avg_utilization"] = round(sum(samples) / len(samples), 2)
-                except (TypeError, ValueError):
-                    pass
+                node["utilization"] = float(utilization)
+            save_nodes()
 
-            save_nodes(nodes)
+        model_name = task.get("model_name", "ai-model")
+        stats = MODEL_STATS.setdefault(model_name, {"count": 0.0, "total_time": 0.0})
+        if status == "success":
+            inference_time = float(metrics.get("inference_time_ms", 0))
+            if inference_time > 0:
+                stats["count"] += 1
+                stats["total_time"] += inference_time
 
-        tasks.pop(task_id, None)
+        TASKS.pop(task_id, None)
 
     log_event(
-        f"Node {node_id} completed task {task_id[:8]} ({task_type}): {status.upper()}"
+        f"Node {node_id} completed AI task {task_id[:8]} using {model_name} in {metrics.get('inference_time_ms', 'n/a')} ms (reward {reward} HAI).",
+        "info",
     )
-    return jsonify({"status": "received", "task": task_id}), 200
+
+    return jsonify({"status": "received", "task": task_id, "reward": reward}), 200
+
+
+@app.route("/nodes", methods=["GET"])
+def get_nodes():
+    with LOCK:
+        now = unix_now()
+        payload = []
+        total_rewards = 0.0
+        total_util = 0.0
+        online_count = 0
+        backlog = 0
+        for node_id, info in NODES.items():
+            last_seen_unix = info.get("last_seen_unix", parse_timestamp(info.get("last_seen")))
+            online = (now - last_seen_unix) <= ONLINE_THRESHOLD
+            if online:
+                online_count += 1
+            pending = len(pending_tasks_for_node(node_id))
+            backlog += pending
+            avg_util = float(info.get("avg_utilization", info.get("utilization", 0)))
+            total_util += avg_util
+            rewards = float(info.get("rewards", 0.0))
+            total_rewards += rewards
+            start_time = parse_timestamp(info.get("start_time"))
+            uptime_seconds = max(0, int(now - start_time))
+            last_result = info.get("last_result", {})
+            model_name = last_result.get("model_name") or info.get("current_task", {}).get("model_name")
+            inference_time = last_result.get("metrics", {}).get("inference_time_ms")
+            payload.append({
+                "node_id": node_id,
+                "model_name": model_name,
+                "inference_time_ms": inference_time,
+                "gpu_utilization": info.get("utilization", 0),
+                "avg_utilization": avg_util,
+                "rewards": rewards,
+                "last_reward": info.get("last_reward", 0.0),
+                "last_seen": info.get("last_seen"),
+                "uptime_human": format_duration(uptime_seconds),
+                "status": "online" if online else "offline",
+                "last_result": last_result,
+            })
+        total_nodes = len(payload)
+        summary = {
+            "timestamp": iso_now(),
+            "total_nodes": total_nodes,
+            "online_nodes": online_count,
+            "offline_nodes": total_nodes - online_count,
+            "avg_utilization": round(total_util / total_nodes, 2) if total_nodes else 0.0,
+            "tasks_backlog": backlog,
+            "total_rewards": round(total_rewards, 6),
+        }
+    return jsonify({"nodes": payload, "summary": summary}), 200
+
+
+@app.route("/rewards", methods=["GET"])
+def get_rewards():
+    with LOCK:
+        rewards = {node_id: info.get("rewards", 0.0) for node_id, info in NODES.items()}
+        total = round(sum(rewards.values()), 6)
+    return jsonify({"rewards": rewards, "total": total}), 200
 
 
 @app.route("/logs", methods=["GET"])
-def logs_endpoint():
-    with lock:
-        entries = list(event_logs)[-50:]
+def get_logs():
+    with LOCK:
+        entries = list(EVENT_LOGS)[-50:]
     return jsonify({"logs": entries}), 200
 
 
-@app.route("/dashboard", methods=["GET"])
+@app.route("/feed", methods=["GET"])
+def feed_catalog():
+    response = []
+    for item in MODEL_CATALOG:
+        stats = MODEL_STATS.get(item["name"], {"count": 0.0, "total_time": 0.0})
+        avg_time = 0.0
+        if stats["count"]:
+            avg_time = stats["total_time"] / stats["count"]
+        response.append(
+            {
+                "model_name": item["name"],
+                "input_shape": item["input_shape"],
+                "reward_weight": item["reward_weight"],
+                "avg_inference_time_ms": round(avg_time, 2),
+            }
+        )
+    return jsonify({"models": response}), 200
+
+
+@app.route("/dashboard")
 def dashboard():
     return send_from_directory(app.static_folder, "dashboard.html")
 

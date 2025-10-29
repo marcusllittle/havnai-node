@@ -98,6 +98,29 @@
       min-width: 820px;
     }
 
+    .job-feed {
+      width: 100%;
+      max-width: 1080px;
+      margin-top: 2.5rem;
+      background: rgba(0, 24, 38, 0.9);
+      border: 1px solid rgba(95, 228, 255, 0.15);
+      border-radius: 22px;
+      padding: 1.8rem 2rem;
+      box-shadow: 0 30px 70px rgba(0, 200, 255, 0.15);
+      overflow-x: auto;
+    }
+
+    .job-feed h2 {
+      margin: 0 0 1rem;
+      color: var(--accent);
+      font-size: 1.2rem;
+    }
+
+    .job-feed table {
+      min-width: 720px;
+      font-size: 0.88rem;
+    }
+
     thead {
       background: rgba(95, 228, 255, 0.12);
     }
@@ -210,12 +233,16 @@
       <strong id="summaryUtil">0%</strong>
     </div>
     <div class="summary-card">
-      <span class="label">Grid Rewards</span>
-      <strong id="summaryRewards">0 HAI</strong>
+      <span class="label">Active Jobs</span>
+      <strong id="summaryActive">0</strong>
     </div>
     <div class="summary-card">
-      <span class="label">Task Backlog</span>
+      <span class="label">Queued Jobs</span>
       <strong id="summaryBacklog">0</strong>
+    </div>
+    <div class="summary-card">
+      <span class="label">$HAI Distributed</span>
+      <strong id="summaryRewards">0 HAI</strong>
     </div>
     <div class="summary-card">
       <span class="label">Last Sync</span>
@@ -241,6 +268,29 @@
         <tr>
           <td colspan="7" style="text-align:center; padding: 1.6rem; color: var(--text-muted);">
             Awaiting telemetry…
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="job-feed">
+    <h2>Recent Job Feed</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Job ID</th>
+          <th>Wallet</th>
+          <th>Model</th>
+          <th>Status</th>
+          <th>Reward (HAI)</th>
+          <th>Completed</th>
+        </tr>
+      </thead>
+      <tbody id="jobFeed">
+        <tr>
+          <td colspan="6" style="text-align:center; padding: 1.4rem; color: var(--text-muted);">
+            Waiting for public jobs…
           </td>
         </tr>
       </tbody>

@@ -7,11 +7,11 @@
       "memory_used": 1596,
       "utilization": 0
     },
-    "last_seen": "2025-10-29T15:56:19.958092Z",
+    "last_seen": "2025-10-29T16:30:35.016484Z",
     "uptime": 1761749239.352345,
-    "utilization": 0.0,
+    "utilization": 5.0,
     "rewards": 19.0851,
-    "avg_utilization": 25.07,
+    "avg_utilization": 5.0,
     "utilization_samples": [
       40.0,
       34.0,
@@ -75,25 +75,183 @@
       0.0
     ],
     "tasks_completed": 202,
-    "current_task": {
-      "task_id": "626eb0ca-026d-4adc-ad6f-0ce91daac039",
-      "type": "noise_simulation",
-      "status": "pending"
-    },
+    "current_task": null,
     "last_result": {
-      "task_id": "a86dbff8-5731-4aa7-8c28-c0abb7432447",
-      "type": "noise_simulation",
-      "status": "success",
+      "task_id": "ai-2110449800657",
+      "status": "skipped",
       "metrics": {
-        "task_type": "noise_simulation",
-        "iterations": 45938,
-        "accumulator": 11550.6645,
-        "estimated_utilization": 28.71125,
-        "wall_time": 0.0032,
-        "duration": 0.0032
+        "task_type": "ai",
+        "message": "Unknown task type",
+        "duration": 0.0
       },
-      "completed_at": "2025-10-29T15:56:17.045600Z"
+      "model_name": "conv-demo",
+      "reward": 0.0
     },
-    "start_time": 1761750606.179619
+    "start_time": 1761750606.179619,
+    "reward_history": [
+      {
+        "reward": 0.0,
+        "task_id": "ai-6654659655756",
+        "timestamp": "2025-10-29T16:26:14.291992Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-9907186059012",
+        "timestamp": "2025-10-29T16:26:27.985574Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-5135807780721",
+        "timestamp": "2025-10-29T16:26:41.728097Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-3865283296989",
+        "timestamp": "2025-10-29T16:26:55.408297Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-8328156082753",
+        "timestamp": "2025-10-29T16:27:09.083985Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-3625285224712",
+        "timestamp": "2025-10-29T16:27:22.771060Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-5159806547564",
+        "timestamp": "2025-10-29T16:27:36.479404Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-2454477574854",
+        "timestamp": "2025-10-29T16:27:50.163183Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-6760084442339",
+        "timestamp": "2025-10-29T16:28:03.933803Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-8850915390349",
+        "timestamp": "2025-10-29T16:28:17.765471Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-1877085617414",
+        "timestamp": "2025-10-29T16:28:31.455371Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-1187001564857",
+        "timestamp": "2025-10-29T16:28:45.273429Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-6125878099284",
+        "timestamp": "2025-10-29T16:28:58.951637Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-5038062582741",
+        "timestamp": "2025-10-29T16:29:12.652237Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-1169957915261",
+        "timestamp": "2025-10-29T16:29:26.345090Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-3951670577494",
+        "timestamp": "2025-10-29T16:29:40.066330Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-4158606224340",
+        "timestamp": "2025-10-29T16:29:53.788464Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-7522402964845",
+        "timestamp": "2025-10-29T16:30:07.483303Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-8066225236199",
+        "timestamp": "2025-10-29T16:30:21.319856Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-2110449800657",
+        "timestamp": "2025-10-29T16:30:35.016474Z"
+      }
+    ],
+    "last_reward": 0.0,
+    "util_samples": [
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0,
+      5.0
+    ]
   }
 }

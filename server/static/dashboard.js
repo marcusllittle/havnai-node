@@ -8,10 +8,12 @@ const statusEl = document.getElementById("status");
 const summaryTotal = document.getElementById("summaryTotal");
 const summaryOnline = document.getElementById("summaryOnline");
 const summaryUtil = document.getElementById("summaryUtil");
+const summaryActive = document.getElementById("summaryActive");
 const summaryRewards = document.getElementById("summaryRewards");
 const summaryBacklog = document.getElementById("summaryBacklog");
 const summarySync = document.getElementById("summarySync");
 const logList = document.getElementById("logList");
+const jobFeedBody = document.getElementById("jobFeed");
 
 function setStatus(message = "", tone = "info") {
   statusEl.textContent = message;
@@ -55,14 +57,16 @@ function renderNodes(nodes, rewardsMap) {
   nodeTable.innerHTML = rows;
 }
 
-function renderSummary(summary, rewardTotal) {
-  summary = summary || {};
-  summaryTotal.textContent = summary.total_nodes ?? 0;
-  summaryOnline.textContent = summary.online_nodes ?? 0;
-  const util = Number(summary.avg_utilization ?? 0).toFixed(1);
+function renderSummary(nodeSummary, jobSummary) {
+  nodeSummary = nodeSummary || {};
+  jobSummary = jobSummary || {};
+  summaryTotal.textContent = nodeSummary.total_nodes ?? 0;
+  summaryOnline.textContent = nodeSummary.online_nodes ?? 0;
+  const util = Number(nodeSummary.avg_utilization ?? 0).toFixed(1);
   summaryUtil.textContent = `${util}%`;
-  summaryRewards.textContent = `${Number(rewardTotal ?? 0).toFixed(6)} HAI`;
-  summaryBacklog.textContent = summary.tasks_backlog ?? 0;
+  summaryActive.textContent = jobSummary.active_jobs ?? 0;
+  summaryBacklog.textContent = jobSummary.queued_jobs ?? nodeSummary.tasks_backlog ?? 0;
+  summaryRewards.textContent = `${Number(jobSummary.total_distributed ?? 0).toFixed(6)} HAI`;
   summarySync.textContent = new Date().toLocaleTimeString();
 }
 
@@ -82,6 +86,35 @@ function renderLogs(logs) {
   logList.innerHTML = items;
 }
 
+function renderJobFeed(feed) {
+  if (!Array.isArray(feed) || feed.length === 0) {
+    jobFeedBody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align:center; padding: 1.4rem; color: var(--text-muted);">
+          No public jobs submitted yet.
+        </td>
+      </tr>`;
+    return;
+  }
+
+  const rows = feed.map((item) => {
+    const reward = Number(item.reward ?? 0).toFixed(6);
+    const completed = item.completed_at ? new Date(item.completed_at).toLocaleTimeString() : "—";
+    const status = (item.status || "—").toUpperCase();
+    return `
+      <tr>
+        <td><span class="badge">${item.job_id}</span></td>
+        <td>${item.wallet}</td>
+        <td>${item.model}</td>
+        <td>${status}</td>
+        <td class="reward">${reward}</td>
+        <td>${completed}</td>
+      </tr>`;
+  }).join("");
+
+  jobFeedBody.innerHTML = rows;
+}
+
 async function fetchTelemetry() {
   try {
     const [nodesRes, rewardsRes, logsRes] = await Promise.all([
@@ -99,7 +132,8 @@ async function fetchTelemetry() {
     const logsJson = await logsRes.json();
 
     renderNodes(nodesJson.nodes ?? [], rewardsJson.rewards ?? {});
-    renderSummary(nodesJson.summary, rewardsJson.total);
+    renderSummary(nodesJson.summary, nodesJson.job_summary);
+    renderJobFeed(nodesJson.job_summary?.feed ?? []);
     renderLogs(logsJson.logs ?? []);
     setStatus(`Sync successful. Next update in ${POLL_INTERVAL / 1000}s.`);
   } catch (error) {

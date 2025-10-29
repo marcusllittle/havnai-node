@@ -5,3 +5,8 @@ numpy
 onnx
 onnxruntime
 psutil
+# Creator-mode optional deps
+torch
+diffusers
+safetensors
+huggingface-hub

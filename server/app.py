@@ -18,11 +18,24 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from onnx import TensorProto, helper
 
+# ---------------------------------------------------------------------------
+# Paths & constants
+# ---------------------------------------------------------------------------
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 MODELS_DIR = STATIC_DIR / "models"
+CREATOR_MODEL_DIR = Path(__file__).resolve().parent / "models" / "creator"
 REGISTRY_FILE = BASE_DIR / "nodes.json"
 DB_PATH = BASE_DIR / "db" / "ledger.db"
+
+MODEL_WEIGHTS = {
+    # Stage 5A additions: reward scaling across model families
+    "mlp-classifier": 1,
+    "conv-demo": 1.5,
+    "sdxl": 10,
+    "nsfw-sdxl": 12,
+}
 
 MODEL_STATS: Dict[str, Dict[str, float]] = {}
 EVENT_LOGS: deque = deque(maxlen=200)
@@ -37,10 +50,10 @@ WALLET_REGEX = re.compile(r"^0x[a-fA-F0-9]{40}$")
 app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static")
 CORS(app)
 
-
 # ---------------------------------------------------------------------------
 # Time helpers
 # ---------------------------------------------------------------------------
+
 
 def iso_now() -> str:
     return datetime.utcnow().isoformat() + "Z"
@@ -86,7 +99,7 @@ def log_event(message: str, level: str = "info") -> None:
 
 
 # ---------------------------------------------------------------------------
-# Stage 5A additions: SQLite helpers for public job + reward ledger
+# Stage 5A additions: SQLite ledger for public jobs & rewards
 # ---------------------------------------------------------------------------
 
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -109,6 +122,8 @@ def init_db() -> None:
             wallet TEXT NOT NULL,
             model TEXT NOT NULL,
             data TEXT,
+            task_type TEXT NOT NULL,
+            weight REAL NOT NULL,
             status TEXT NOT NULL,
             node_id TEXT,
             timestamp REAL NOT NULL,
@@ -130,24 +145,41 @@ def init_db() -> None:
     )
     conn.commit()
 
+    # Stage 5A additions: ensure new columns exist on legacy databases
+    job_columns = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
+    if "task_type" not in job_columns:
+        conn.execute("ALTER TABLE jobs ADD COLUMN task_type TEXT DEFAULT 'ai'")
+    if "weight" not in job_columns:
+        conn.execute("ALTER TABLE jobs ADD COLUMN weight REAL DEFAULT 1.0")
+    conn.commit()
 
-def enqueue_job(wallet: str, model: str, data: str) -> str:
+
+def enqueue_job(wallet: str, model: str, task_type: str, data: str, weight: float) -> str:
     job_id = f"job-{uuid.uuid4().hex[:12]}"
     conn = get_db()
     conn.execute(
-        "INSERT INTO jobs (id, wallet, model, data, status, node_id, timestamp) VALUES (?, ?, ?, ?, 'queued', NULL, ?)",
-        (job_id, wallet, model, data, unix_now()),
+        """
+        INSERT INTO jobs (id, wallet, model, data, task_type, weight, status, node_id, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, 'queued', NULL, ?)
+        """,
+        (job_id, wallet, model, data, task_type, weight, unix_now()),
     )
     conn.commit()
     return job_id
 
 
-def fetch_next_job() -> Optional[Dict[str, Any]]:
+def fetch_next_job_for_node(role: str) -> Optional[Dict[str, Any]]:
     conn = get_db()
-    row = conn.execute(
-        "SELECT * FROM jobs WHERE status='queued' ORDER BY timestamp ASC LIMIT 1"
-    ).fetchone()
-    return dict(row) if row else None
+    # Stage 5A additions: creator nodes grab heavy workloads first
+    rows = conn.execute(
+        "SELECT * FROM jobs WHERE status='queued' ORDER BY timestamp ASC"
+    ).fetchall()
+    for row in rows:
+        task_type = row["task_type"]
+        if task_type == "image_gen" and role != "creator":
+            continue
+        return dict(row)
+    return None
 
 
 def assign_job_to_node(job_id: str, node_id: str) -> None:
@@ -184,7 +216,7 @@ def record_reward(wallet: str, task_id: str, reward: float) -> None:
     conn.commit()
 
 
-def get_job_summary(limit: int = 10) -> Dict[str, Any]:
+def get_job_summary(limit: int = 12) -> Dict[str, Any]:
     conn = get_db()
     queued = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='queued'").fetchone()[0]
     active = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='running'").fetchone()[0]
@@ -193,7 +225,8 @@ def get_job_summary(limit: int = 10) -> Dict[str, Any]:
     ).fetchone()[0]
     rows = conn.execute(
         """
-        SELECT jobs.id, jobs.wallet, jobs.model, jobs.status, jobs.completed_at, rewards.reward_hai
+        SELECT jobs.id, jobs.wallet, jobs.model, jobs.task_type, jobs.status, jobs.weight,
+               jobs.completed_at, rewards.reward_hai
         FROM jobs
         LEFT JOIN rewards ON rewards.task_id = jobs.id
         ORDER BY jobs.timestamp DESC
@@ -214,8 +247,10 @@ def get_job_summary(limit: int = 10) -> Dict[str, Any]:
                 "job_id": row["id"],
                 "wallet": row["wallet"],
                 "model": row["model"],
+                "task_type": row["task_type"],
                 "status": row["status"],
                 "reward": round(row["reward_hai"] or 0.0, 6),
+                "weight": row["weight"],
                 "completed_at": completed_iso,
             }
         )
@@ -234,12 +269,14 @@ def get_job(job_id: str) -> Optional[Dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# Model management (Stage 4 foundation)
+# Model management (Stage 4 foundation + Stage 5A creator packs)
 # ---------------------------------------------------------------------------
+
 
 def ensure_directories() -> None:
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    CREATOR_MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def build_mlp_model(path: Path, input_dim: int, hidden_dim: int, output_dim: int) -> None:
@@ -290,23 +327,51 @@ MODEL_CATALOG = [
         "name": "mlp-classifier",
         "filename": "mlp-classifier.onnx",
         "input_shape": [1, 64],
-        "reward_weight": 1.25,
+        "reward_weight": MODEL_WEIGHTS.get("mlp-classifier", 1),
         "builder": lambda path: build_mlp_model(path, 64, 32, 10),
+        "task_type": "ai",
     },
     {
         "name": "conv-demo",
         "filename": "conv-demo.onnx",
         "input_shape": [1, 1, 16, 16],
-        "reward_weight": 1.5,
+        "reward_weight": MODEL_WEIGHTS.get("conv-demo", 1.5),
         "builder": build_conv_model,
+        "task_type": "ai",
     },
 ]
+
+
+CREATOR_MODELS: Dict[str, Dict[str, Any]] = {
+    # Stage 5A additions: heavy assets served via creator directory
+    "sdxl": {
+        "filename": "sdxl.safetensors",
+        "reward_weight": MODEL_WEIGHTS.get("sdxl", 10),
+        "task_type": "image_gen",
+    },
+    "nsfw-sdxl": {
+        "filename": "nsfw-sdxl.safetensors",
+        "reward_weight": MODEL_WEIGHTS.get("nsfw-sdxl", 12),
+        "task_type": "image_gen",
+    },
+}
 
 
 def get_model_config(name: str) -> Optional[Dict[str, Any]]:
     for cfg in MODEL_CATALOG:
         if cfg["name"] == name:
             return cfg
+    heavy = CREATOR_MODELS.get(name)
+    if heavy:
+        path = CREATOR_MODEL_DIR / heavy["filename"]
+        heavy = {
+            **heavy,
+            "name": name,
+            "path": path,
+            "url": f"/models/download/{path.name}",
+            "input_shape": heavy.get("input_shape", [1, 4, 64, 64]),
+        }
+        return heavy
     return None
 
 
@@ -320,10 +385,15 @@ def ensure_model_catalog() -> None:
         cfg["path"] = path
         cfg["url"] = f"/static/models/{path.name}"
         MODEL_STATS.setdefault(cfg["name"], {"count": 0.0, "total_time": 0.0})
+    for name, meta in CREATOR_MODELS.items():
+        path = CREATOR_MODEL_DIR / meta["filename"]
+        meta["path"] = path
+        meta["url"] = f"/models/download/{path.name}"
+        MODEL_STATS.setdefault(name, {"count": 0.0, "total_time": 0.0})
 
 
 # ---------------------------------------------------------------------------
-# Node persistence
+# Node persistence helpers
 # ---------------------------------------------------------------------------
 
 def load_nodes() -> Dict[str, Dict[str, Any]]:
@@ -345,7 +415,8 @@ def load_nodes() -> Dict[str, Dict[str, Any]]:
         info.setdefault("last_reward", 0.0)
         info.setdefault("start_time", current)
         info.setdefault("last_seen", iso_now())
-        info["last_seen_unix"] = parse_timestamp(info["last_seen"])
+        info.setdefault("role", info.get("role", "worker"))
+        info["last_seen_unix"] = parse_timestamp(info.get("last_seen"))
     return data
 
 
@@ -374,9 +445,12 @@ def pending_tasks_for_node(node_id: str) -> List[Dict[str, Any]]:
     return [task for task in TASKS.values() if task["assigned_to"] == node_id and task["status"] in {"pending", "assigned"}]
 
 
-# Stage 5A additions: nodes pick up public jobs from queue
+# Stage 5A additions: nodes pick up public jobs or fallback to synthetic ones
+
 def issue_public_job_task(node_id: str) -> Optional[Dict[str, Any]]:
-    job = fetch_next_job()
+    node = NODES.get(node_id, {})
+    role = node.get("role", "worker")
+    job = fetch_next_job_for_node(role)
     if not job:
         return None
 
@@ -389,15 +463,16 @@ def issue_public_job_task(node_id: str) -> Optional[Dict[str, Any]]:
     assign_job_to_node(job["id"], node_id)
     task = {
         "task_id": job["id"],
-        "type": "ai",
-        "model_name": cfg["name"],
-        "model_url": cfg["url"],
-        "input_shape": cfg["input_shape"],
-        "reward_weight": cfg["reward_weight"],
+        "type": cfg.get("task_type", job.get("task_type", "ai")),
+        "model_name": cfg.get("name", job["model"]),
+        "model_url": cfg.get("url"),
+        "input_shape": cfg.get("input_shape", [1, 64]),
+        "reward_weight": job.get("weight", cfg.get("reward_weight", 1.0)),
         "assigned_to": node_id,
         "status": "pending",
         "job_id": job["id"],
         "wallet": job["wallet"],
+        "task_type": job.get("task_type", cfg.get("task_type", "ai")),
     }
     TASKS[task["task_id"]] = dict(task)
     log_event(f"Node {node_id} claimed public job {job['id']} for wallet {job['wallet']}.", "info")
@@ -409,42 +484,45 @@ def issue_internal_task(node_id: str) -> Dict[str, Any]:
     task_id = f"ai-{uuid.uuid4().hex[:10]}"
     task = {
         "task_id": task_id,
-        "type": "ai",
+        "type": cfg.get("task_type", "ai"),
         "model_name": cfg["name"],
         "model_url": cfg["url"],
         "input_shape": cfg["input_shape"],
-        "reward_weight": cfg["reward_weight"],
+        "reward_weight": cfg.get("reward_weight", 1.0),
         "assigned_to": node_id,
         "status": "pending",
         "job_id": None,
         "wallet": None,
+        "task_type": cfg.get("task_type", "ai"),
     }
     TASKS[task_id] = dict(task)
     return task
 
 
 # ---------------------------------------------------------------------------
-# Flask routes
+# Routes
 # ---------------------------------------------------------------------------
 
 
 @app.route("/submit-job", methods=["POST"])
 def submit_job():
-    # Stage 5A additions: public job submission endpoint
     payload = request.get_json() or {}
     wallet = str(payload.get("wallet", "")).strip()
     model_name = payload.get("model")
-    job_data = payload.get("data", "")
+    task_type = payload.get("task_type", "ai")
+    job_data = payload.get("data") or payload.get("prompt", "")
 
     if not wallet or not WALLET_REGEX.match(wallet):
         return jsonify({"error": "invalid wallet"}), 400
+
     cfg = get_model_config(model_name)
     if not cfg:
         return jsonify({"error": "unknown model"}), 400
 
+    weight = MODEL_WEIGHTS.get(model_name, cfg.get("reward_weight", 1.0))
     with LOCK:
-        job_id = enqueue_job(wallet, cfg["name"], job_data)
-    log_event(f"Public job {job_id} queued for wallet {wallet} using {cfg['name']}.", "info")
+        job_id = enqueue_job(wallet, cfg.get("name", model_name), task_type, job_data, weight)
+    log_event(f"Public job {job_id} queued for wallet {wallet} using {model_name}.", "info")
     return jsonify({"status": "queued", "job_id": job_id}), 200
 
 
@@ -470,12 +548,14 @@ def register():
                 "reward_history": [],
                 "last_reward": 0.0,
                 "start_time": data.get("start_time", unix_now()),
+                "role": data.get("role", "worker"),
             }
             NODES[node_id] = node
-            log_event(f"Node {node_id} registered.")
+            log_event(f"Node {node_id} registered as {node['role']}.")
 
         node["os"] = data.get("os", node.get("os", "unknown"))
         node["gpu"] = data.get("gpu", node.get("gpu", {}))
+        node["role"] = data.get("role", node.get("role", "worker"))
         util = data.get("gpu", {}).get("utilization") if isinstance(data.get("gpu"), dict) else data.get("utilization")
         util = float(util or node.get("utilization", 0))
         node["utilization"] = util
@@ -499,7 +579,8 @@ def get_ai_tasks():
         return jsonify({"error": "missing node_id"}), 400
 
     with LOCK:
-        if node_id not in NODES:
+        node_info = NODES.get(node_id)
+        if not node_info:
             return jsonify({"tasks": []}), 200
 
         pending = pending_tasks_for_node(node_id)
@@ -512,6 +593,8 @@ def get_ai_tasks():
                 "task_id": pending[0]["task_id"],
                 "model_name": pending[0]["model_name"],
                 "status": pending[0]["status"],
+                "task_type": pending[0].get("task_type", "ai"),
+                "weight": pending[0].get("reward_weight", 1.0),
             }
             save_nodes()
 
@@ -523,10 +606,10 @@ def get_ai_tasks():
             response_tasks.append(
                 {
                     "task_id": task["task_id"],
-                    "type": "ai",
+                    "type": task.get("task_type", "ai"),
                     "model_name": task["model_name"],
                     "model_url": task["model_url"],
-                    "input_shape": task["input_shape"],
+                    "input_shape": task.get("input_shape", [1, 64]),
                     "reward_weight": task.get("reward_weight", 1.0),
                 }
             )
@@ -568,7 +651,7 @@ def submit_results():
             wallet = task.get("wallet")
             inference_time = float(metrics.get("inference_time_ms") or metrics.get("duration", 0) * 1000)
             gpu_util = float(utilization or node.get("utilization", 0))
-            reward_weight = float(task.get("reward_weight", 1.0))
+            reward_weight = float(task.get("reward_weight", MODEL_WEIGHTS.get(model_name, 1.0)))
             if inference_time > 0:
                 reward = round((gpu_util * reward_weight) / inference_time, 6)
             node["rewards"] = round(node.get("rewards", 0.0) + reward, 6)
@@ -586,6 +669,7 @@ def submit_results():
                 "model_name": model_name,
                 "reward": reward,
                 "wallet": wallet,
+                "task_type": task.get("task_type", "ai"),
             }
             if status == "success":
                 node["tasks_completed"] = node.get("tasks_completed", 0) + 1
@@ -603,7 +687,6 @@ def submit_results():
                     pass
             save_nodes()
 
-        # Stage 5A additions: reconcile job ledger + reward accounting
         job = get_job(task_id)
         if job:
             complete_job(task_id, status)
@@ -622,7 +705,7 @@ def submit_results():
         TASKS.pop(task_id, None)
 
     log_event(
-        f"Node {node_id} completed AI task {task_id[:8]} using {model_name} in {metrics.get('inference_time_ms', 'n/a')} ms (reward {reward} HAI).",
+        f"Node {node_id} completed task {task_id[:8]} ({model_name}) in {metrics.get('inference_time_ms', 'n/a')} ms (reward {reward} HAI).",
         "info",
     )
 
@@ -651,10 +734,24 @@ def get_nodes():
             last_result = info.get("last_result", {})
             model_name = last_result.get("model_name") or info.get("current_task", {}).get("model_name")
             inference_time = last_result.get("metrics", {}).get("inference_time_ms")
+            current_task = info.get("current_task", {})
+            task_type = (
+                last_result.get("task_type")
+                or current_task.get("task_type")
+                or "ai"
+            )
+            weight = (
+                last_result.get("metrics", {}).get("reward_weight")
+                or current_task.get("weight")
+                or MODEL_WEIGHTS.get(model_name or "mlp-classifier", 1.0)
+            )
             payload.append(
                 {
                     "node_id": node_id,
+                    "role": info.get("role", "worker"),
+                    "task_type": task_type,
                     "model_name": model_name,
+                    "model_weight": weight,
                     "inference_time_ms": inference_time,
                     "gpu_utilization": info.get("utilization", 0),
                     "avg_utilization": avg_util,
@@ -675,7 +772,6 @@ def get_nodes():
             "avg_utilization": round(total_util / total_nodes, 2) if total_nodes else 0.0,
             "total_rewards": round(total_rewards, 6),
         }
-        # Stage 5A additions: expose job/reward telemetry to dashboard
         job_summary = get_job_summary()
     summary["tasks_backlog"] = job_summary["queued_jobs"]
     return jsonify(
@@ -689,10 +785,10 @@ def get_nodes():
 
 @app.route("/rewards", methods=["GET"])
 def get_rewards():
+    job_summary = get_job_summary()
     with LOCK:
         rewards = {node_id: info.get("rewards", 0.0) for node_id, info in NODES.items()}
-    total_distributed = get_job_summary()["total_distributed"]
-    return jsonify({"rewards": rewards, "total": total_distributed}), 200
+    return jsonify({"rewards": rewards, "total": job_summary["total_distributed"]}), 200
 
 
 @app.route("/logs", methods=["GET"])
@@ -705,20 +801,46 @@ def get_logs():
 @app.route("/feed", methods=["GET"])
 def feed_catalog():
     response = []
-    for cfg in MODEL_CATALOG:
-        stats = MODEL_STATS.get(cfg["name"], {"count": 0.0, "total_time": 0.0})
+    for name in MODEL_WEIGHTS:
+        cfg = get_model_config(name)
+        stats = MODEL_STATS.get(name, {"count": 0.0, "total_time": 0.0})
         avg_time = 0.0
         if stats["count"]:
             avg_time = stats["total_time"] / stats["count"]
         response.append(
             {
-                "model_name": cfg["name"],
-                "input_shape": cfg["input_shape"],
-                "reward_weight": cfg["reward_weight"],
+                "model_name": name,
+                "reward_weight": MODEL_WEIGHTS[name],
+                "task_type": cfg.get("task_type", "ai") if cfg else "ai",
                 "avg_inference_time_ms": round(avg_time, 2),
             }
         )
     return jsonify({"models": response}), 200
+
+
+# Stage 5A additions: creator-model catalog routes
+@app.route("/models/list", methods=["GET"])
+def list_models():
+    ensure_directories()
+    models = []
+    for name, meta in CREATOR_MODELS.items():
+        path = CREATOR_MODEL_DIR / meta["filename"]
+        models.append(
+            {
+                "model": name,
+                "filename": meta["filename"],
+                "exists": path.exists(),
+                "size": path.stat().st_size if path.exists() else 0,
+                "url": f"/models/download/{meta['filename']}"
+            }
+        )
+    return jsonify({"creator_models": models}), 200
+
+
+@app.route("/models/download/<path:filename>", methods=["GET"])
+def download_model(filename: str):
+    ensure_directories()
+    return send_from_directory(CREATOR_MODEL_DIR, filename, as_attachment=True)
 
 
 @app.route("/dashboard")

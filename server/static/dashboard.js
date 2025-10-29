@@ -24,7 +24,7 @@ function renderNodes(nodes, rewardsMap) {
   if (!Array.isArray(nodes) || nodes.length === 0) {
     nodeTable.innerHTML = `
       <tr>
-        <td colspan="7" style="text-align:center; padding: 1.6rem; color: var(--text-muted);">
+        <td colspan="9" style="text-align:center; padding: 1.6rem; color: var(--text-muted);">
           No nodes connected yet.
         </td>
       </tr>`;
@@ -37,14 +37,21 @@ function renderNodes(nodes, rewardsMap) {
     .map((node) => {
       const reward = rewardsMap[node.node_id] ?? node.rewards ?? 0;
       const model = node.model_name || "—";
+      const taskType = (node.task_type || "ai").toUpperCase();
       const inference = node.inference_time_ms != null ? Number(node.inference_time_ms).toFixed(2) : "—";
       const util = Number(node.gpu_utilization ?? 0).toFixed(0);
       const rewardFmt = Number(reward).toFixed(6);
       const lastSeen = node.last_seen ? new Date(node.last_seen).toLocaleTimeString() : "—";
+      const weight = Number(node.model_weight ?? 1).toFixed(2);
+      const badgeClass = node.role === "creator" ? "badge creator" : "badge";
+      const creatorBadge = node.role === "creator" ? ' <span class="badge creator">Creator Mode Active</span>' : "";
+      const typeClass = taskType === "IMAGE_GEN" ? "job-type-creator" : "job-type-onnx";
       return `
-        <tr>
-          <td><span class="badge">${node.node_id}</span></td>
+        <tr class="${typeClass}">
+          <td><span class="${badgeClass}">${node.node_id}</span>${creatorBadge}</td>
+          <td>${taskType}</td>
           <td>${model}</td>
+          <td>${weight}</td>
           <td>${inference}</td>
           <td class="util">${util}%</td>
           <td class="reward">${rewardFmt}</td>
@@ -90,7 +97,7 @@ function renderJobFeed(feed) {
   if (!Array.isArray(feed) || feed.length === 0) {
     jobFeedBody.innerHTML = `
       <tr>
-        <td colspan="6" style="text-align:center; padding: 1.4rem; color: var(--text-muted);">
+        <td colspan="8" style="text-align:center; padding: 1.4rem; color: var(--text-muted);">
           No public jobs submitted yet.
         </td>
       </tr>`;
@@ -101,11 +108,16 @@ function renderJobFeed(feed) {
     const reward = Number(item.reward ?? 0).toFixed(6);
     const completed = item.completed_at ? new Date(item.completed_at).toLocaleTimeString() : "—";
     const status = (item.status || "—").toUpperCase();
+    const type = (item.task_type || "ai").toUpperCase();
+    const weight = Number(item.weight ?? 1).toFixed(2);
+    const rowClass = item.task_type === "image_gen" ? "job-type-creator" : "job-type-onnx";
     return `
-      <tr>
+      <tr class="${rowClass}">
         <td><span class="badge">${item.job_id}</span></td>
         <td>${item.wallet}</td>
+        <td>${type}</td>
         <td>${item.model}</td>
+        <td>${weight}</td>
         <td>${status}</td>
         <td class="reward">${reward}</td>
         <td>${completed}</td>

@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import onnx
-from flask import Flask, jsonify, request, send_file, send_from_directory
+from flask import abort, Flask, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
 from onnx import TensorProto, helper
 
@@ -37,7 +37,7 @@ CLIENT_PATH = BASE_DIR / "client" / "client.py"
 CLIENT_REQUIREMENTS = BASE_DIR / "client" / "requirements-node.txt"
 VERSION_FILE = BASE_DIR / "VERSION"
 
-SUPPORTED_MODEL_EXTS = {".onnx", ".safetensors", ".ckpt"}
+SUPPORTED_MODEL_EXTS = {".onnx", ".safetensors", ".ckpt", ".pt"}
 
 # Reward weights bootstrap – enriched at runtime via registration
 MODEL_WEIGHTS: Dict[str, float] = {
@@ -371,31 +371,39 @@ def ensure_model_catalog() -> None:
         if callable(builder):
             builder(path)
         cfg["path"] = path
-        cfg["url"] = f"/static/models/{path.name}"
+        cfg["url"] = f"/models/{path.name}"
         MODEL_STATS.setdefault(cfg["name"], {"count": 0.0, "total_time": 0.0})
 
     global STATIC_CREATOR_MODELS
     STATIC_CREATOR_MODELS = {}
-    if CREATOR_MODEL_DIR.exists():
-        for path in CREATOR_MODEL_DIR.rglob("*"):
-            if not path.is_file() or path.suffix.lower() not in SUPPORTED_MODEL_EXTS:
+    creator_exts = {".safetensors", ".ckpt", ".pt"}
+    seen_paths: set[Path] = set()
+    for root in (CREATOR_MODEL_DIR, MODELS_DIR):
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file() or path.suffix.lower() not in creator_exts:
                 continue
+            resolved = path.resolve()
+            if resolved in seen_paths:
+                continue
+            seen_paths.add(resolved)
             name = path.stem.lower().replace(" ", "-")
             weight = MODEL_WEIGHTS.get(name)
             if weight is None:
-                weight = 10.0 if path.suffix.lower() in {".safetensors", ".ckpt"} else 2.0
+                weight = 10.0
                 MODEL_WEIGHTS[name] = weight
-            task_type = "image_gen" if path.suffix.lower() in {".safetensors", ".ckpt"} else "ai"
+            task_type = "image_gen"
             STATIC_CREATOR_MODELS[name] = {
                 "name": name,
                 "filename": path.name,
                 "path": path,
-                "url": f"/models/download/{path.name}",
+                "url": f"/models/{path.name}",
                 "reward_weight": weight,
                 "task_type": task_type,
                 "size": path.stat().st_size,
                 "source": "server",
-                "tags": [path.suffix.lstrip('.')],
+                "tags": [path.suffix.lstrip(".")],
             }
             MODEL_STATS.setdefault(name, {"count": 0.0, "total_time": 0.0})
 
@@ -901,18 +909,51 @@ def client_version() -> Any:
 
 
 # ---------------------------------------------------------------------------
-# API routes – models catalog
+# API routes – models catalog & hosting
 # ---------------------------------------------------------------------------
 
 
 @app.route("/models/list")
 def list_models() -> Any:
-    return jsonify({"models": build_models_catalog()})
+    models: List[Dict[str, Any]] = []
+    supported_exts = {".safetensors", ".ckpt", ".pt", ".onnx"}
+    for path in sorted(MODELS_DIR.iterdir()):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in supported_exts:
+            continue
+        size_mb = round(path.stat().st_size / (1024 * 1024), 2)
+        models.append(
+            {
+                "name": path.stem,
+                "size_mb": size_mb,
+                "path": f"/models/{path.name}",
+            }
+        )
+    return jsonify({"models": models})
 
 
-@app.route("/models/download/<path:filename>")
+# Future installers will fetch models via `$SERVER_URL/models/<filename>`.
+@app.route("/models/<path:filename>")
 def download_model(filename: str) -> Any:
-    return send_from_directory(CREATOR_MODEL_DIR, filename, as_attachment=True)
+    safe_path = (MODELS_DIR / filename).resolve()
+    try:
+        safe_path.relative_to(MODELS_DIR.resolve())
+    except ValueError:
+        abort(404)
+    if not safe_path.exists() or not safe_path.is_file():
+        abort(404)
+    if safe_path.suffix.lower() not in {".safetensors", ".ckpt", ".pt", ".onnx"}:
+        abort(404)
+    return send_from_directory(MODELS_DIR, filename, as_attachment=True)
+
+
+@app.route("/registry.json")
+def creator_registry() -> Any:
+    registry_path = MODELS_DIR / "registry.json"
+    if not registry_path.exists():
+        return jsonify({"error": "registry not found"}), 404
+    return send_from_directory(MODELS_DIR, "registry.json", mimetype="application/json")
 
 
 # ---------------------------------------------------------------------------

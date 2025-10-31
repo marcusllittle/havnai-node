@@ -1,0 +1,16 @@
+{
+  "creator_models": [
+    {
+      "name": "triomerge_v10",
+      "type": "nsfw",
+      "path": "/models/triomerge_v10.safetensors",
+      "size_mb": 4125
+    },
+    {
+      "name": "unstablePornhwa_beta",
+      "type": "nsfw",
+      "path": "/models/unstablePornhwa_beta.safetensors",
+      "size_mb": 3750
+    }
+  ]
+}

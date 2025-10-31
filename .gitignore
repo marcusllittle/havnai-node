@@ -3,3 +3,7 @@ client/__pycache__/
 server/__pycache__/
 node/logs/
 server/logs/
+# Ignore large model binaries
+server/static/models/*.safetensors
+server/static/models/*.ckpt
+server/static/models/*.pt

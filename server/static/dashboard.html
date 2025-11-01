@@ -6,6 +6,8 @@
   <title>HavnAI Grid · Stage 5A</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css" integrity="sha512-oHDEc8XedS+d2cN2B3d9kM0C5s1Y+sLuRfCp6HIMi7Q5x0sF4XKQ4uvo9Z3p2dg5p3u5l5pX5ho2BZHmOj5rkg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
   <style>
+    @import url("https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700&display=swap");
+
     :root {
       --bg: #000913;
       --panel: rgba(0, 25, 36, 0.85);
@@ -18,7 +20,7 @@
     }
 
     body {
-      font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: "Exo 2", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: radial-gradient(circle at top, #001423 0%, var(--bg) 70%);
       min-height: 100vh;
       margin: 0;
@@ -146,7 +148,7 @@
     }
 
     .job-feed table {
-      min-width: 720px;
+      min-width: 780px;
       font-size: 0.88rem;
     }
 
@@ -225,12 +227,59 @@
       color: var(--success);
     }
 
-    tr.job-type-onnx {
-      background: rgba(95, 228, 255, 0.04);
-    }
-
     tr.job-type-creator {
       background: rgba(186, 139, 255, 0.07);
+    }
+
+    .analytics-grid {
+      width: 100%;
+      max-width: 1080px;
+      margin: 2.5rem 0 1rem;
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
+
+    .analytics-card {
+      background: linear-gradient(135deg, rgba(95, 228, 255, 0.18), rgba(0, 35, 53, 0.8));
+      border: 1px solid rgba(95, 228, 255, 0.25);
+      border-radius: 18px;
+      padding: 1rem 1.3rem;
+      box-shadow: 0 20px 60px rgba(0, 170, 255, 0.15);
+    }
+
+    .analytics-card span.label {
+      display: block;
+      text-transform: uppercase;
+      font-size: 0.72rem;
+      color: rgba(210, 243, 255, 0.65);
+      letter-spacing: 0.16em;
+    }
+
+    .analytics-card strong {
+      display: block;
+      margin-top: 0.45rem;
+      font-size: 1.6rem;
+      color: #fff;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .status-badge.completed { color: #0f0; }
+    .status-badge.running { color: #0ff; }
+    .status-badge.queued { color: #ff0; }
+    .status-badge.failed { color: #ff5a5a; }
+
+    .job-card img {
+      border: 1px solid #0ff;
+      border-radius: 6px;
+      max-width: 96px;
     }
 
     .models-panel {
@@ -271,6 +320,21 @@
     <p class="links"><a href="/join">Join the Grid</a> · <a href="/network/leaderboard">Leaderboard</a></p>
   </header>
 
+  <section class="analytics-grid">
+    <div class="analytics-card">
+      <span class="label">Total Nodes Online</span>
+      <strong id="metricNodesOnline">0</strong>
+    </div>
+    <div class="analytics-card">
+      <span class="label">Jobs Completed Today</span>
+      <strong id="metricJobsToday">0</strong>
+    </div>
+    <div class="analytics-card">
+      <span class="label">Total HAI Rewarded</span>
+      <strong id="metricTotalHai">0</strong>
+    </div>
+  </section>
+
   <section class="health-summary">
     <div class="summary-card">
       <span class="label">Total Nodes</span>
@@ -308,19 +372,14 @@
       <thead>
         <tr>
           <th>Node</th>
-          <th>Task Type</th>
-          <th>Model</th>
-          <th>Model Weight</th>
-          <th>Inference (ms)</th>
+          <th>Creator Mode</th>
           <th>GPU Util %</th>
-          <th>Reward (HAI)</th>
-          <th>Last Seen</th>
-          <th>Uptime</th>
+          <th>Total HAI</th>
         </tr>
       </thead>
       <tbody id="nodeTable">
         <tr>
-          <td colspan="9" style="text-align:center; padding: 1.6rem; color: var(--text-muted);">
+          <td colspan="4" style="text-align:center; padding: 1.6rem; color: var(--text-muted);">
             Awaiting telemetry…
           </td>
         </tr>
@@ -334,18 +393,17 @@
       <thead>
         <tr>
           <th>Job ID</th>
-          <th>Wallet</th>
-          <th>Task Type</th>
           <th>Model</th>
-          <th>Weight</th>
+          <th>Wallet</th>
           <th>Status</th>
           <th>Reward (HAI)</th>
+          <th>Preview</th>
           <th>Completed</th>
         </tr>
       </thead>
       <tbody id="jobFeed">
         <tr>
-          <td colspan="8" style="text-align:center; padding: 1.4rem; color: var(--text-muted);">
+          <td colspan="7" style="text-align:center; padding: 1.4rem; color: var(--text-muted);">
             Waiting for public jobs…
           </td>
         </tr>

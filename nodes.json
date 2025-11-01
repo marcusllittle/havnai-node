@@ -7,7 +7,7 @@
       "memory_used": 1596,
       "utilization": 0
     },
-    "last_seen": "2025-10-29T18:27:15.337120Z",
+    "last_seen": "2025-10-29T18:33:52.356072Z",
     "uptime": 1761749239.352345,
     "utilization": 5.0,
     "rewards": 19.0851,
@@ -77,7 +77,7 @@
     "tasks_completed": 202,
     "current_task": null,
     "last_result": {
-      "task_id": "ai-ef9045b616",
+      "task_id": "ai-03181f7603",
       "status": "skipped",
       "metrics": {
         "task_type": "ai",
@@ -93,96 +93,6 @@
     "reward_history": [
       {
         "reward": 0.0,
-        "task_id": "ai-87a24feb54",
-        "timestamp": "2025-10-29T18:22:40.863599Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-b9fbfeebf7",
-        "timestamp": "2025-10-29T18:22:54.874033Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-a8f7739792",
-        "timestamp": "2025-10-29T18:23:08.827205Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-e4f4d18303",
-        "timestamp": "2025-10-29T18:23:22.726570Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-efcf18aa9e",
-        "timestamp": "2025-10-29T18:23:36.548443Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-cb8c095bce",
-        "timestamp": "2025-10-29T18:23:50.307170Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-39855bc3c9",
-        "timestamp": "2025-10-29T18:24:04.015639Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-575ce29b2e",
-        "timestamp": "2025-10-29T18:24:18.009530Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-c0c62aec74",
-        "timestamp": "2025-10-29T18:24:31.907097Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-def1cea139",
-        "timestamp": "2025-10-29T18:24:45.747415Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-308cf31b22",
-        "timestamp": "2025-10-29T18:24:59.579660Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-7841455190",
-        "timestamp": "2025-10-29T18:25:13.286410Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-07a12eff62",
-        "timestamp": "2025-10-29T18:25:27.272398Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-981a8eb4d5",
-        "timestamp": "2025-10-29T18:25:41.200287Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-43334674ad",
-        "timestamp": "2025-10-29T18:25:55.073023Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-67d9957903",
-        "timestamp": "2025-10-29T18:26:08.861457Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-7eaf716e7e",
-        "timestamp": "2025-10-29T18:26:22.578395Z"
-      },
-      {
-        "reward": 0.0,
-        "task_id": "ai-b1d6b493f8",
-        "timestamp": "2025-10-29T18:26:36.283982Z"
-      },
-      {
-        "reward": 0.0,
         "task_id": "ai-8cc4e25570",
         "timestamp": "2025-10-29T18:26:50.216302Z"
       },
@@ -190,6 +100,96 @@
         "reward": 0.0,
         "task_id": "ai-ef9045b616",
         "timestamp": "2025-10-29T18:27:04.061607Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-7cf69543b7",
+        "timestamp": "2025-10-29T18:29:58.214756Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-5be421dae9",
+        "timestamp": "2025-10-29T18:30:11.947932Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-88233b1ebb",
+        "timestamp": "2025-10-29T18:30:25.920692Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-ea8da0a205",
+        "timestamp": "2025-10-29T18:30:39.882979Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-60b56fdbd8",
+        "timestamp": "2025-10-29T18:30:53.572435Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-77a2b8bff1",
+        "timestamp": "2025-10-29T18:31:07.330197Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-09a7aec24e",
+        "timestamp": "2025-10-29T18:31:21.044926Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-b0663a1462",
+        "timestamp": "2025-10-29T18:31:34.740073Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-c809d39d36",
+        "timestamp": "2025-10-29T18:31:48.570169Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-4465e04e22",
+        "timestamp": "2025-10-29T18:32:02.288916Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-3d0f7e4833",
+        "timestamp": "2025-10-29T18:32:16.026737Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-4821c7e8ef",
+        "timestamp": "2025-10-29T18:32:29.730796Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-4b6e8efcdb",
+        "timestamp": "2025-10-29T18:32:43.533044Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-bc98dfa4fb",
+        "timestamp": "2025-10-29T18:32:57.273423Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-8cdf82963f",
+        "timestamp": "2025-10-29T18:33:11.123231Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-836d5c8fef",
+        "timestamp": "2025-10-29T18:33:24.821732Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-7d870b260b",
+        "timestamp": "2025-10-29T18:33:38.537616Z"
+      },
+      {
+        "reward": 0.0,
+        "task_id": "ai-03181f7603",
+        "timestamp": "2025-10-29T18:33:52.356065Z"
       }
     ],
     "last_reward": 0.0,
@@ -255,6 +255,99 @@
       5.0,
       5.0
     ],
-    "role": "worker"
+    "role": "worker",
+    "node_name": null,
+    "wallet": null,
+    "version": "dev"
+  },
+  "Marcuss-MacBook-Pro.local": {
+    "os": "Darwin",
+    "gpu": {
+      "gpu_name": "Simulated",
+      "memory_total": 0,
+      "memory_used": 0,
+      "utilization": 9
+    },
+    "rewards": 0.0,
+    "avg_utilization": 10.17,
+    "utilization": 9.0,
+    "tasks_completed": 0,
+    "current_task": {
+      "task_id": "ai-a687f50e2b",
+      "model_name": "mlp-classifier",
+      "status": "pending",
+      "task_type": "ai",
+      "weight": 1.0
+    },
+    "last_result": {},
+    "reward_history": [],
+    "last_reward": 0.0,
+    "start_time": 1761937004.295187,
+    "role": "worker",
+    "node_name": "Marcuss-MacBook-Pro.local",
+    "version": "0.7.0",
+    "util_samples": [
+      18.0,
+      11.0,
+      10.0,
+      10.0,
+      9.0,
+      7.0,
+      8.0,
+      8.0,
+      7.0,
+      9.0,
+      11.0,
+      9.0,
+      17.0,
+      22.0,
+      7.0,
+      20.0,
+      7.0,
+      7.0,
+      6.0,
+      6.0,
+      7.0,
+      6.0,
+      8.0,
+      9.0,
+      7.0,
+      7.0,
+      7.0,
+      7.0,
+      24.0,
+      10.0,
+      5.0,
+      13.0,
+      5.0,
+      7.0,
+      11.0,
+      12.0,
+      7.0,
+      7.0,
+      10.0,
+      7.0,
+      11.0,
+      11.0,
+      10.0,
+      8.0,
+      7.0,
+      7.0,
+      6.0,
+      7.0,
+      6.0,
+      8.0,
+      14.0,
+      42.0,
+      16.0,
+      10.0,
+      13.0,
+      10.0,
+      6.0,
+      14.0,
+      10.0,
+      9.0
+    ],
+    "last_seen": "2025-11-01T13:41:09.651402Z"
   }
 }

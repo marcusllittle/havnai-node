@@ -12,6 +12,9 @@ const summaryActive = document.getElementById("summaryActive");
 const summaryRewards = document.getElementById("summaryRewards");
 const summaryBacklog = document.getElementById("summaryBacklog");
 const summarySync = document.getElementById("summarySync");
+const metricNodesOnline = document.getElementById("metricNodesOnline");
+const metricJobsToday = document.getElementById("metricJobsToday");
+const metricTotalHai = document.getElementById("metricTotalHai");
 const logList = document.getElementById("logList");
 const jobFeedBody = document.getElementById("jobFeed");
 const modelCatalogBody = document.getElementById("modelCatalog");
@@ -25,7 +28,7 @@ function renderNodes(nodes, rewardsMap) {
   if (!Array.isArray(nodes) || nodes.length === 0) {
     nodeTable.innerHTML = `
       <tr>
-        <td colspan="9" style="text-align:center; padding: 1.6rem; color: var(--text-muted);">
+        <td colspan="4" style="text-align:center; padding: 1.6rem; color: var(--text-muted);">
           No nodes connected yet.
         </td>
       </tr>`;
@@ -37,28 +40,18 @@ function renderNodes(nodes, rewardsMap) {
     .sort((a, b) => a.node_id.localeCompare(b.node_id))
     .map((node) => {
       const reward = rewardsMap[node.node_id] ?? node.rewards ?? 0;
-      const model = node.model_name || "—";
-      const taskType = (node.task_type || "ai").toUpperCase();
-      const inference = node.inference_time_ms != null ? Number(node.inference_time_ms).toFixed(2) : "—";
-      const util = Number(node.gpu_utilization ?? 0).toFixed(0);
+      const util = Number(node.avg_utilization ?? node.gpu_utilization ?? 0).toFixed(1);
       const rewardFmt = Number(reward).toFixed(6);
-      const lastSeen = node.last_seen ? new Date(node.last_seen).toLocaleTimeString() : "—";
-      const weight = Number(node.model_weight ?? 1).toFixed(2);
       const badgeClass = node.role === "creator" ? "badge creator" : "badge";
       const displayName = node.node_name || node.node_id;
-      const creatorBadge = node.role === "creator" ? ' <span class="badge creator">Creator Mode Active</span>' : "";
-      const typeClass = taskType === "IMAGE_GEN" ? "job-type-creator" : "job-type-onnx";
+      const creatorBadge = node.role === "creator" ? '<span class="badge creator">Creator</span>' : '<span class="badge">Worker</span>';
+      const typeClass = "job-type-creator";
       return `
         <tr class="${typeClass}">
-          <td><span class="${badgeClass}">${displayName}</span>${creatorBadge}</td>
-          <td>${taskType}</td>
-          <td>${model}</td>
-          <td>${weight}</td>
-          <td>${inference}</td>
+          <td><span class="${badgeClass}">${displayName}</span></td>
+          <td>${creatorBadge}</td>
           <td class="util">${util}%</td>
-          <td class="reward">${rewardFmt}</td>
-          <td>${lastSeen}</td>
-          <td>${node.uptime_human || "—"}</td>
+          <td class="reward">${rewardFmt} HAI</td>
         </tr>`;
     })
     .join("");
@@ -77,6 +70,15 @@ function renderSummary(nodeSummary, jobSummary) {
   summaryBacklog.textContent = jobSummary.queued_jobs ?? nodeSummary.tasks_backlog ?? 0;
   summaryRewards.textContent = `${Number(jobSummary.total_distributed ?? 0).toFixed(6)} HAI`;
   summarySync.textContent = new Date().toLocaleTimeString();
+  if (metricNodesOnline) {
+    metricNodesOnline.textContent = nodeSummary.online_nodes ?? 0;
+  }
+  if (metricJobsToday) {
+    metricJobsToday.textContent = jobSummary.jobs_completed_today ?? 0;
+  }
+  if (metricTotalHai) {
+    metricTotalHai.textContent = `${Number(jobSummary.total_distributed ?? 0).toFixed(2)} HAI`;
+  }
 }
 
 function renderLogs(logs) {
@@ -99,7 +101,7 @@ function renderJobFeed(feed) {
   if (!Array.isArray(feed) || feed.length === 0) {
     jobFeedBody.innerHTML = `
       <tr>
-        <td colspan="8" style="text-align:center; padding: 1.4rem; color: var(--text-muted);">
+        <td colspan="7" style="text-align:center; padding: 1.4rem; color: var(--text-muted);">
           No public jobs submitted yet.
         </td>
       </tr>`;
@@ -107,21 +109,29 @@ function renderJobFeed(feed) {
   }
 
   const rows = feed.map((item) => {
-    const reward = Number(item.reward ?? 0).toFixed(6);
+    const reward = Number(item.reward_hai ?? item.reward ?? 0).toFixed(6);
     const completed = item.completed_at ? new Date(item.completed_at).toLocaleTimeString() : "—";
-    const status = (item.status || "—").toUpperCase();
-    const type = (item.task_type || "ai").toUpperCase();
-    const weight = Number(item.weight ?? 1).toFixed(2);
-    const rowClass = item.task_type === "image_gen" ? "job-type-creator" : "job-type-onnx";
+    const status = (item.status || "QUEUED").toUpperCase();
+    const statusMap = {
+      QUEUED: "🟡 Queued",
+      RUNNING: "🔵 Running",
+      COMPLETED: "🟢 Completed",
+      FAILED: "🔴 Failed",
+    };
+    const statusClass = status.toLowerCase();
+    const statusLabel = statusMap[status] || status;
+    const preview = item.image_url
+      ? `<div class="job-card"><img src="${item.image_url}" alt="${item.job_id} preview" width="96" height="96" loading="lazy" /></div>`
+      : "—";
+    const rowClass = "job-type-creator";
     return `
       <tr class="${rowClass}">
         <td><span class="badge">${item.job_id}</span></td>
-        <td>${item.wallet}</td>
-        <td>${type}</td>
         <td>${item.model}</td>
-        <td>${weight}</td>
-        <td>${status}</td>
+        <td>${item.wallet}</td>
+        <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
         <td class="reward">${reward}</td>
+        <td>${preview}</td>
         <td>${completed}</td>
       </tr>`;
   }).join("");

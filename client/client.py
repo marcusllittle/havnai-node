@@ -231,7 +231,7 @@ def scan_local_models() -> Dict[str, Dict[str, Any]]:
             "hash": hash_file(path),
             "tags": [path.suffix.lstrip(".")],
             "weight": weight,
-            "task_type": "image_gen" if path.suffix.lower() in {".safetensors", ".ckpt"} else "ai",
+            "task_type": "IMAGE_GEN",
         }
     return catalog
 
@@ -352,11 +352,11 @@ def execute_task(task: Dict[str, Any]) -> None:
     global utilization_hint
 
     task_id = task.get("task_id", "unknown")
-    task_type = (task.get("type") or "ai").lower()
+    task_type = (task.get("type") or "IMAGE_GEN").lower()
     model_name = (task.get("model_name") or "model").lower()
     model_url = task.get("model_url", "")
     reward_weight = float(task.get("reward_weight", 1.0))
-    input_shape = task.get("input_shape", [1, 64])
+    input_shape = task.get("input_shape") or []
 
     if task_type == "image_gen" and ROLE != "creator":
         log(f"Skipping creator task {task_id[:8]} — node not in creator mode", prefix="⚠️")
@@ -510,7 +510,7 @@ def poll_tasks_loop() -> None:
     backoff = BACKOFF_BASE
     while True:
         try:
-            resp = SESSION.get(endpoint("/tasks/ai"), params={"node_id": NODE_NAME}, timeout=15)
+            resp = SESSION.get(endpoint("/tasks/creator"), params={"node_id": NODE_NAME}, timeout=15)
             resp.raise_for_status()
             payload = resp.json()
             tasks = payload.get("tasks", [])

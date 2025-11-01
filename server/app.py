@@ -4,7 +4,6 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 import os
-import random
 import re
 import sqlite3
 import subprocess
@@ -16,11 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import numpy as np
-import onnx
 from flask import abort, Flask, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
-from onnx import TensorProto, helper
 
 # ---------------------------------------------------------------------------
 # Paths & constants
@@ -31,20 +27,20 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 MODELS_DIR = STATIC_DIR / "models"
 CREATOR_MODEL_DIR = Path(__file__).resolve().parent / "models" / "creator"
 LOGS_DIR = Path(__file__).resolve().parent / "logs"
+OUTPUTS_DIR = STATIC_DIR / "outputs"
 REGISTRY_FILE = BASE_DIR / "nodes.json"
 DB_PATH = BASE_DIR / "db" / "ledger.db"
 CLIENT_PATH = BASE_DIR / "client" / "client.py"
 CLIENT_REQUIREMENTS = BASE_DIR / "client" / "requirements-node.txt"
 VERSION_FILE = BASE_DIR / "VERSION"
 
-SUPPORTED_MODEL_EXTS = {".onnx", ".safetensors", ".ckpt", ".pt"}
+SUPPORTED_MODEL_EXTS = {".safetensors", ".ckpt", ".pt"}
+CREATOR_TASK_TYPE = "IMAGE_GEN"
 
 # Reward weights bootstrap – enriched at runtime via registration
 MODEL_WEIGHTS: Dict[str, float] = {
-    "mlp-classifier": 1.0,
-    "conv-demo": 1.5,
-    "sdxl": 10.0,
-    "nsfw-sdxl": 12.0,
+    "triomerge_v10": 12.0,
+    "unstablepornhwa_beta": 12.0,
 }
 
 MODEL_STATS: Dict[str, Dict[str, float]] = {}
@@ -297,83 +293,10 @@ init_db()
 # ---------------------------------------------------------------------------
 
 
-def build_mlp_model(path: Path, input_dim: int, hidden_dim: int, output_dim: int) -> None:
-    if path.exists():
-        return
-    weights1 = np.random.randn(input_dim, hidden_dim).astype(np.float32) * 0.1
-    bias1 = np.random.randn(hidden_dim).astype(np.float32) * 0.1
-    weights2 = np.random.randn(hidden_dim, output_dim).astype(np.float32) * 0.1
-    bias2 = np.random.randn(output_dim).astype(np.float32) * 0.1
-
-    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, input_dim])
-    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, output_dim])
-
-    W1 = helper.make_tensor("W1", TensorProto.FLOAT, weights1.shape, weights1.flatten())
-    B1 = helper.make_tensor("B1", TensorProto.FLOAT, bias1.shape, bias1)
-    W2 = helper.make_tensor("W2", TensorProto.FLOAT, weights2.shape, weights2.flatten())
-    B2 = helper.make_tensor("B2", TensorProto.FLOAT, bias2.shape, bias2)
-
-    node1 = helper.make_node("Gemm", ["input", "W1", "B1"], ["h1"], alpha=1.0, beta=1.0)
-    relu = helper.make_node("Relu", ["h1"], ["relu1"])
-    node2 = helper.make_node("Gemm", ["relu1", "W2", "B2"], ["output"], alpha=1.0, beta=1.0)
-
-    graph = helper.make_graph([node1, relu, node2], "mlp_graph", [input_tensor], [output_tensor], [W1, B1, W2, B2])
-    model = helper.make_model(graph, producer_name="havnai")
-    onnx.save(model, path)
-
-
-def build_conv_model(path: Path) -> None:
-    if path.exists():
-        return
-    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 1, 16, 16])
-    output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 8, 14, 14])
-
-    weights = np.random.randn(8, 1, 3, 3).astype(np.float32) * 0.05
-    bias = np.random.randn(8).astype(np.float32) * 0.05
-
-    W = helper.make_tensor("conv_W", TensorProto.FLOAT, weights.shape, weights.flatten())
-    B = helper.make_tensor("conv_B", TensorProto.FLOAT, bias.shape, bias)
-    conv = helper.make_node("Conv", ["input", "conv_W", "conv_B"], ["conv_out"], pads=[0, 0, 0, 0])
-    relu = helper.make_node("Relu", ["conv_out"], ["relu_out"])
-    graph = helper.make_graph([conv, relu], "conv_graph", [input_tensor], [output_tensor], [W, B])
-    model = helper.make_model(graph, producer_name="havnai")
-    onnx.save(model, path)
-
-
-MODEL_CATALOG: List[Dict[str, Any]] = [
-    {
-        "name": "mlp-classifier",
-        "filename": "mlp-classifier.onnx",
-        "input_shape": [1, 64],
-        "reward_weight": MODEL_WEIGHTS.get("mlp-classifier", 1.0),
-        "task_type": "ai",
-        "builder": lambda path: build_mlp_model(path, 64, 32, 10),
-        "source": "builtin",
-    },
-    {
-        "name": "conv-demo",
-        "filename": "conv-demo.onnx",
-        "input_shape": [1, 1, 16, 16],
-        "reward_weight": MODEL_WEIGHTS.get("conv-demo", 1.5),
-        "task_type": "ai",
-        "builder": build_conv_model,
-        "source": "builtin",
-    },
-]
-
 STATIC_CREATOR_MODELS: Dict[str, Dict[str, Any]] = {}
 
 
-def ensure_model_catalog() -> None:
-    for cfg in MODEL_CATALOG:
-        path = MODELS_DIR / cfg["filename"]
-        builder = cfg.get("builder")
-        if callable(builder):
-            builder(path)
-        cfg["path"] = path
-        cfg["url"] = f"/models/{path.name}"
-        MODEL_STATS.setdefault(cfg["name"], {"count": 0.0, "total_time": 0.0})
-
+def load_creator_models() -> None:
     global STATIC_CREATOR_MODELS
     STATIC_CREATOR_MODELS = {}
     creator_exts = {".safetensors", ".ckpt", ".pt"}
@@ -385,30 +308,49 @@ def ensure_model_catalog() -> None:
             if not path.is_file() or path.suffix.lower() not in creator_exts:
                 continue
             resolved = path.resolve()
+            try:
+                resolved.relative_to(MODELS_DIR.resolve())
+            except ValueError:
+                continue
             if resolved in seen_paths:
                 continue
             seen_paths.add(resolved)
             name = path.stem.lower().replace(" ", "-")
-            weight = MODEL_WEIGHTS.get(name)
-            if weight is None:
-                weight = 10.0
-                MODEL_WEIGHTS[name] = weight
-            task_type = "image_gen"
+            weight = MODEL_WEIGHTS.get(name, 10.0)
+            MODEL_WEIGHTS[name] = weight
             STATIC_CREATOR_MODELS[name] = {
                 "name": name,
-                "filename": path.name,
-                "path": path,
-                "url": f"/models/{path.name}",
+                "filename": resolved.name,
+                "path": resolved,
+                "url": f"/models/{resolved.name}",
                 "reward_weight": weight,
-                "task_type": task_type,
-                "size": path.stat().st_size,
+                "task_type": CREATOR_TASK_TYPE,
+                "size": resolved.stat().st_size,
                 "source": "server",
                 "tags": [path.suffix.lstrip(".")],
             }
             MODEL_STATS.setdefault(name, {"count": 0.0, "total_time": 0.0})
 
 
-ensure_model_catalog()
+load_creator_models()
+OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def model_exists(model_name: str) -> bool:
+    entry = STATIC_CREATOR_MODELS.get((model_name or "").lower())
+    if not entry:
+        return False
+    path = entry.get("path")
+    if not isinstance(path, Path):
+        return False
+    try:
+        resolved = path.resolve()
+        models_root = MODELS_DIR.resolve()
+        if not resolved.is_file():
+            return False
+        return models_root in resolved.parents or resolved.parent == models_root
+    except Exception:
+        return False
 
 
 def refresh_registered_models() -> None:
@@ -427,7 +369,7 @@ def refresh_registered_models() -> None:
                 "size": row["size"],
                 "tags": json.loads(row["tags"]) if row["tags"] else [],
                 "weight": float(row["weight"] or MODEL_WEIGHTS.get(name, 5.0)),
-                "task_type": row["task_type"] or ("image_gen" if name.startswith("sd") else "ai"),
+                "task_type": CREATOR_TASK_TYPE,
                 "nodes": set(),
                 "source": "registered",
             },
@@ -440,8 +382,6 @@ def refresh_registered_models() -> None:
             entry["size"] = row["size"]
         if row["weight"]:
             entry["weight"] = float(row["weight"])
-        if row["task_type"]:
-            entry["task_type"] = row["task_type"]
     for entry in catalog.values():
         entry["nodes"] = sorted(entry["nodes"])
         MODEL_WEIGHTS[entry["name"]] = entry["weight"]
@@ -528,6 +468,7 @@ log_event(f"Telemetry online with {len(NODES)} cached node(s).", version=APP_VER
 
 def enqueue_job(wallet: str, model: str, task_type: str, data: str, weight: float) -> str:
     job_id = f"job-{uuid.uuid4().hex[:12]}"
+    task_type = (task_type or CREATOR_TASK_TYPE).upper()
     conn = get_db()
     conn.execute(
         """
@@ -546,12 +487,14 @@ def fetch_next_job_for_node(node_id: str) -> Optional[Dict[str, Any]]:
     node = NODES.get(node_id, {})
     role = node.get("role", "worker")
     for row in rows:
+        task_type = (row["task_type"] or CREATOR_TASK_TYPE).upper()
+        if task_type != CREATOR_TASK_TYPE:
+            continue
+        if role != "creator":
+            continue
         model_name = row["model"].lower()
         cfg = get_model_config(model_name)
         if not cfg:
-            continue
-        task_type = row["task_type"] or cfg.get("task_type", "ai")
-        if task_type == "image_gen" and role != "creator":
             continue
         if cfg.get("source") == "registered":
             allowed_nodes = set(REGISTERED_MODELS.get(model_name, {}).get("nodes", []))
@@ -593,19 +536,31 @@ def record_reward(wallet: Optional[str], task_id: str, reward: float) -> None:
 
 def get_job_summary(limit: int = 12) -> Dict[str, Any]:
     conn = get_db()
-    queued = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='queued'").fetchone()[0]
-    active = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='running'").fetchone()[0]
+    queued = conn.execute(
+        "SELECT COUNT(*) FROM jobs WHERE status='queued' AND UPPER(task_type)=?",
+        (CREATOR_TASK_TYPE,),
+    ).fetchone()[0]
+    active = conn.execute(
+        "SELECT COUNT(*) FROM jobs WHERE status='running' AND UPPER(task_type)=?",
+        (CREATOR_TASK_TYPE,),
+    ).fetchone()[0]
     total_distributed = conn.execute("SELECT COALESCE(SUM(reward_hai),0) FROM rewards").fetchone()[0]
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    completed_today = conn.execute(
+        "SELECT COUNT(*) FROM jobs WHERE status='completed' AND completed_at IS NOT NULL AND completed_at >= ?",
+        (today_start,),
+    ).fetchone()[0]
     rows = conn.execute(
         """
         SELECT jobs.id, jobs.wallet, jobs.model, jobs.task_type, jobs.status, jobs.weight,
-               jobs.completed_at, rewards.reward_hai
+               jobs.completed_at, jobs.timestamp, rewards.reward_hai
         FROM jobs
         LEFT JOIN rewards ON rewards.task_id = jobs.id
+        WHERE UPPER(jobs.task_type)=?
         ORDER BY jobs.timestamp DESC
         LIMIT ?
         """,
-        (limit,),
+        (CREATOR_TASK_TYPE, limit),
     ).fetchall()
     feed = []
     for row in rows:
@@ -615,22 +570,39 @@ def get_job_summary(limit: int = 12) -> Dict[str, Any]:
             if completed_at
             else None
         )
+        image_filename = f"{row['id']}.png"
+        image_path = OUTPUTS_DIR / image_filename
+        has_image = image_path.exists()
+        image_url = f"/outputs/{image_filename}" if has_image else None
+        output_path = str(image_path) if has_image else None
+        timestamp_value = row["timestamp"]
+        submitted_iso = (
+            datetime.utcfromtimestamp(timestamp_value).isoformat() + "Z"
+            if timestamp_value
+            else None
+        )
+        reward_value = float(row["reward_hai"] or 0.0)
         feed.append(
             {
                 "job_id": row["id"],
                 "wallet": row["wallet"],
                 "model": row["model"],
                 "task_type": row["task_type"],
-                "status": row["status"],
+                "status": (row["status"] or "").upper(),
                 "weight": float(row["weight"] or MODEL_WEIGHTS.get(row["model"], 1.0)),
-                "reward": round(row["reward_hai"] or 0.0, 6),
+                "reward": round(reward_value, 6),
+                "reward_hai": round(reward_value, 6),
                 "completed_at": completed_iso,
+                "submitted_at": submitted_iso,
+                "image_url": image_url,
+                "output_path": output_path,
             }
         )
     return {
         "queued_jobs": queued,
         "active_jobs": active,
         "total_distributed": round(total_distributed or 0.0, 6),
+        "jobs_completed_today": completed_today,
         "feed": feed,
     }
 
@@ -648,9 +620,6 @@ def get_job(job_id: str) -> Optional[Dict[str, Any]]:
 
 def get_model_config(model_name: str) -> Optional[Dict[str, Any]]:
     model_name = (model_name or "").lower()
-    for cfg in MODEL_CATALOG:
-        if cfg["name"] == model_name:
-            return cfg
     if model_name in STATIC_CREATOR_MODELS:
         return STATIC_CREATOR_MODELS[model_name]
     if model_name in REGISTERED_MODELS:
@@ -658,7 +627,7 @@ def get_model_config(model_name: str) -> Optional[Dict[str, Any]]:
         return {
             "name": model_name,
             "reward_weight": entry.get("weight", resolve_weight(model_name, 5.0)),
-            "task_type": entry.get("task_type", "ai"),
+            "task_type": entry.get("task_type", CREATOR_TASK_TYPE),
             "url": entry.get("url", ""),
             "source": entry.get("source", "registered"),
             "nodes": entry.get("nodes", []),
@@ -668,18 +637,6 @@ def get_model_config(model_name: str) -> Optional[Dict[str, Any]]:
 
 def build_models_catalog() -> List[Dict[str, Any]]:
     catalog: List[Dict[str, Any]] = []
-    for cfg in MODEL_CATALOG:
-        path = MODELS_DIR / cfg["filename"]
-        catalog.append(
-            {
-                "model": cfg["name"],
-                "weight": resolve_weight(cfg["name"], cfg.get("reward_weight", 1.0)),
-                "source": cfg.get("source", "builtin"),
-                "nodes": "server",
-                "tags": ["onnx"],
-                "size": path.stat().st_size if path.exists() else 0,
-            }
-        )
     for name, meta in STATIC_CREATOR_MODELS.items():
         catalog.append(
             {
@@ -710,25 +667,18 @@ def build_models_catalog() -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def issue_internal_task(node_id: str) -> Dict[str, Any]:
-    cfg = random.choice(MODEL_CATALOG)
-    task_id = f"ai-{uuid.uuid4().hex[:10]}"
-    return {
-        "task_id": task_id,
-        "task_type": cfg.get("task_type", "ai"),
-        "model_name": cfg["name"],
-        "model_url": cfg["url"],
-        "input_shape": cfg["input_shape"],
-        "reward_weight": cfg.get("reward_weight", 1.0),
-        "assigned_to": node_id,
-        "status": "pending",
-        "job_id": None,
-        "wallet": None,
-    }
-
-
 def pending_tasks_for_node(node_id: str) -> List[Dict[str, Any]]:
-    return [task for task in TASKS.values() if task["assigned_to"] == node_id and task["status"] in {"pending", "assigned"}]
+    relevant_status = {"pending", "assigned"}
+    tasks = []
+    for task in TASKS.values():
+        if task.get("assigned_to") != node_id:
+            continue
+        if task.get("status") not in relevant_status:
+            continue
+        if (task.get("task_type") or "").upper() != CREATOR_TASK_TYPE:
+            continue
+        tasks.append(task)
+    return tasks
 
 
 # ---------------------------------------------------------------------------
@@ -916,7 +866,7 @@ def client_version() -> Any:
 @app.route("/models/list")
 def list_models() -> Any:
     models: List[Dict[str, Any]] = []
-    supported_exts = {".safetensors", ".ckpt", ".pt", ".onnx"}
+    supported_exts = SUPPORTED_MODEL_EXTS
     for path in sorted(MODELS_DIR.iterdir()):
         if not path.is_file():
             continue
@@ -943,7 +893,7 @@ def download_model(filename: str) -> Any:
         abort(404)
     if not safe_path.exists() or not safe_path.is_file():
         abort(404)
-    if safe_path.suffix.lower() not in {".safetensors", ".ckpt", ".pt", ".onnx"}:
+    if safe_path.suffix.lower() not in SUPPORTED_MODEL_EXTS:
         abort(404)
     return send_from_directory(MODELS_DIR, filename, as_attachment=True)
 
@@ -967,21 +917,25 @@ def submit_job() -> Any:
         return jsonify({"error": "rate limit"}), 429
     payload = request.get_json() or {}
     wallet = str(payload.get("wallet", "")).strip()
-    model_name = str(payload.get("model", "")).lower()
-    task_type = (payload.get("task_type") or "ai").lower()
-    job_data = payload.get("data") or payload.get("prompt", "")
+    model_name_raw = str(payload.get("model", "")).strip()
+    model_name = model_name_raw.lower()
+    job_data = str(payload.get("prompt") or payload.get("data") or "")
     weight = payload.get("weight")
 
     if not wallet or not WALLET_REGEX.match(wallet):
         return jsonify({"error": "invalid wallet"}), 400
+    if not model_name:
+        return jsonify({"error": "missing model"}), 400
+    if not model_exists(model_name):
+        return jsonify({"error": "Model not available"}), 400
 
     cfg = get_model_config(model_name)
     if not cfg:
         return jsonify({"error": "unknown model"}), 400
 
     if weight is None:
-        weight = cfg.get("reward_weight", resolve_weight(model_name, 5.0))
-    task_type = cfg.get("task_type", task_type)
+        weight = cfg.get("reward_weight", resolve_weight(model_name, 10.0))
+    task_type = CREATOR_TASK_TYPE
 
     with LOCK:
         job_id = enqueue_job(wallet, cfg.get("name", model_name), task_type, job_data, float(weight))
@@ -1067,7 +1021,7 @@ def register_models() -> Any:
             size = int(item.get("size") or 0)
             tags = item.get("tags") or []
             weight = float(item.get("weight") or MODEL_WEIGHTS.get(name, 5.0))
-            task_type = item.get("task_type") or ("image_gen" if filename.endswith((".safetensors", ".ckpt")) else "ai")
+            task_type = CREATOR_TASK_TYPE
             conn.execute(
                 """
                 INSERT OR REPLACE INTO node_models (node_id, model_name, filename, hash, size, tags, weight, task_type, updated_at)
@@ -1127,8 +1081,8 @@ def link_wallet() -> Any:
     return jsonify({"status": "linked"}), 200
 
 
-@app.route("/tasks/ai", methods=["GET"])
-def get_ai_tasks() -> Any:
+@app.route("/tasks/creator", methods=["GET"])
+def get_creator_tasks() -> Any:
     node_id = request.args.get("node_id")
     if not node_id:
         return jsonify({"tasks": []}), 200
@@ -1145,39 +1099,33 @@ def get_ai_tasks() -> Any:
                 cfg = get_model_config(job["model"])
                 if cfg:
                     assign_job_to_node(job["id"], node_id)
+                    reward_weight = float(job["weight"] or cfg.get("reward_weight", resolve_weight(job["model"], 10.0)))
                     pending = [
                         {
                             "task_id": job["id"],
-                            "task_type": job["task_type"] or cfg.get("task_type", "ai"),
+                            "task_type": CREATOR_TASK_TYPE,
                             "model_name": job["model"],
                             "model_url": cfg.get("url", ""),
-                            "input_shape": cfg.get("input_shape", [1, 64]),
-                            "reward_weight": float(job["weight"] or cfg.get("reward_weight", 1.0)),
+                            "input_shape": cfg.get("input_shape", []),
+                            "reward_weight": reward_weight,
                             "status": "pending",
                             "wallet": job["wallet"],
+                            "assigned_to": node_id,
+                            "job_id": job["id"],
+                            "data": job.get("data"),
+                            "prompt": job.get("data", ""),
                         }
                     ]
                     node_info["current_task"] = {
                         "task_id": job["id"],
                         "model_name": job["model"],
                         "status": "pending",
-                        "task_type": pending[0]["task_type"],
-                        "weight": pending[0]["reward_weight"],
-                    }
+                            "task_type": pending[0]["task_type"],
+                            "weight": pending[0]["reward_weight"],
+                        }
                     save_nodes()
                 else:
                     complete_job(job["id"], "failed")
-            if not pending:
-                fallback = issue_internal_task(node_id)
-                pending = [fallback]
-                node_info["current_task"] = {
-                    "task_id": fallback["task_id"],
-                    "model_name": fallback["model_name"],
-                    "status": fallback["status"],
-                    "task_type": fallback.get("task_type", "ai"),
-                    "weight": fallback.get("reward_weight", 1.0),
-                }
-                save_nodes()
 
         response_tasks = []
         for task in pending:
@@ -1188,11 +1136,13 @@ def get_ai_tasks() -> Any:
             response_tasks.append(
                 {
                     "task_id": task["task_id"],
-                    "type": task.get("task_type", "ai"),
+                    "type": task.get("task_type", CREATOR_TASK_TYPE),
                     "model_name": task["model_name"],
                     "model_url": task.get("model_url", ""),
-                    "input_shape": task.get("input_shape", [1, 64]),
+                    "input_shape": task.get("input_shape", []),
                     "reward_weight": task.get("reward_weight", 1.0),
+                    "wallet": task.get("wallet"),
+                    "prompt": task.get("prompt") or task.get("data", ""),
                 }
             )
     return jsonify({"tasks": response_tasks}), 200
@@ -1200,7 +1150,7 @@ def get_ai_tasks() -> Any:
 
 @app.route("/tasks", methods=["GET"])
 def tasks_alias() -> Any:
-    return get_ai_tasks()
+    return get_creator_tasks()
 
 
 @app.route("/results", methods=["POST"])
@@ -1227,8 +1177,8 @@ def submit_results() -> Any:
         node = NODES.get(node_id)
         reward = 0.0
         wallet = task.get("wallet")
-        model_name = task.get("model_name", "ai-model")
-        task_type = task.get("task_type", "ai")
+        model_name = task.get("model_name", "creator-model")
+        task_type = task.get("task_type", CREATOR_TASK_TYPE)
         if node:
             inference_time = float(metrics.get("inference_time_ms") or metrics.get("duration", 0) * 1000)
             gpu_util = float(utilization or node.get("utilization", 0.0))
@@ -1338,16 +1288,16 @@ def nodes_endpoint() -> Any:
             model_name = last_result.get("model_name") or info.get("current_task", {}).get("model_name")
             inference_time = last_result.get("metrics", {}).get("inference_time_ms")
             current_task = info.get("current_task") or {}
-            task_type = last_result.get("task_type") or current_task.get("task_type") or "ai"
+            task_type = (last_result.get("task_type") or current_task.get("task_type") or CREATOR_TASK_TYPE)
             weight = (
                 last_result.get("metrics", {}).get("reward_weight")
                 or current_task.get("weight")
-                or MODEL_WEIGHTS.get(model_name or "mlp-classifier", 1.0)
+                or MODEL_WEIGHTS.get((model_name or "triomerge_v10").lower(), 10.0)
             )
             try:
                 weight = float(weight)
             except (TypeError, ValueError):
-                weight = resolve_weight(model_name or "mlp-classifier", 1.0)
+                weight = resolve_weight(model_name or "triomerge_v10", 10.0)
             payload.append(
                 {
                     "node_id": node_id,
@@ -1380,6 +1330,8 @@ def nodes_endpoint() -> Any:
         job_summary = get_job_summary()
         models_catalog = build_models_catalog()
     summary["tasks_backlog"] = job_summary["queued_jobs"]
+    summary["jobs_completed_today"] = job_summary.get("jobs_completed_today", 0)
+    summary["total_rewarded"] = job_summary.get("total_distributed", 0.0)
     return jsonify(
         {
             "nodes": payload,
